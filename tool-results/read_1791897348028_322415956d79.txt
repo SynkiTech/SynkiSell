@@ -1,0 +1,1181 @@
+     1→# MASTER DEVELOPMENT PROMPT: SYNKISELL PHARMACY-SUPERMARKET MANAGEMENT SAAS
+     2→
+     3→## 1. YOUR ROLE AND MISSION
+     4→
+     5→Act as a senior software architect, product engineer, database engineer, UI/UX designer, security engineer, QA engineer, and AI integration specialist working together on one production-grade SaaS application.
+     6→
+     7→Your task is to design, build, test, and document a multi-tenant business management platform specifically for businesses that operate a pharmacy and a supermarket together.
+     8→
+     9→The platform must enable one business owner to manage both departments through one application, one shared point-of-sale system, one business account, and one consolidated management dashboard.
+    10→
+    11→The pharmacy and supermarket must have specialised workflows where their operational needs differ, while sharing common business operations such as sales, purchasing, supplier management, staff management, expenses, payments, and reporting.
+    12→
+    13→This is a commercial product intended for Nigerian businesses, beginning with pilot customers in Osun State and expanding to other Nigerian states.
+    14→
+    15→Do not treat this as a school project, an artificial demo, or a basic CRUD application.
+    16→
+    17→Build the application around real business transactions, data integrity, security, reliable reporting, and maintainability.
+    18→
+    19→## 2. PRODUCT IDENTITY AND BUSINESS MODEL
+    20→
+    21→Product name: SynkiSell.
+    22→
+    23→Use SynkiSell consistently throughout the application, including the interface, application metadata, documentation, login pages, dashboard, and relevant default branding.
+    24→
+    25→Keep the application logo, colours, contact details, receipt branding, and other business identity settings configurable.
+    26→
+    27→Do not rename the product or substitute another product name.
+    28→
+    29→### GitHub repository
+    30→
+    31→Canonical project repository:
+    32→
+    33→https://github.com/SynkiTech/SynkiSell.git
+    34→
+    35→Use this repository as the destination for the project source code and development history.
+    36→
+    37→At the beginning of development:
+    38→
+    39→- Inspect the current workspace and determine whether the repository is already checked out and connected to the correct remote.
+    40→- If necessary, clone the repository into the appropriate workspace without overwriting unrelated project files.
+    41→- Inspect existing branches, commits, files, and project configuration before making changes.
+    42→- Preserve useful existing implementation and history.
+    43→- Do not create a separate unrelated repository when the specified repository is available.
+    44→- Do not force-push, rewrite Git history, or overwrite other contributors' work without explicit authorisation.
+    45→
+    46→As development progresses, commit coherent, tested milestones to the SynkiSell repository.
+    47→
+    48→Use clear commit messages describing the work completed. Push commits to the specified repository when the required GitHub authentication and permissions are available.
+    49→
+    50→Never claim that changes have been committed or pushed unless the relevant Git operations actually succeed. If authentication or repository access is unavailable, explain the blocker and provide the exact steps needed to complete the operation.
+    51→
+    52→Never commit passwords, API keys, database credentials, payment secrets, private environment files, or other sensitive configuration to GitHub.
+    53→
+    54→### Business model
+    55→
+    56→The product is sold as a subscription-based SaaS to multiple independent businesses.
+    57→
+    58→Each business receives:
+    59→
+    60→- Its own secure business account and workspace.
+    61→- Its own users, roles, inventory, suppliers, transactions, reports, and settings.
+    62→- A dedicated onboarding and deployment process.
+    63→- A one-time initial deployment and setup fee.
+    64→- A separate annual subscription payment.
+    65→- Continued access to the agreed product features while the subscription is active.
+    66→- Standard maintenance, security updates, and support according to the selected plan.
+    67→- AI business summaries and forecasting features as specified in this product plan.
+    68→
+    69→The application owner operates a central SaaS administration panel for managing customer accounts, subscription plans, onboarding, deployment fees, payments, feature access, support, and platform-level settings.
+    70→
+    71→Customers must never be able to view or modify another business's private records.
+    72→
+    73→### Proposed launch pricing
+    74→
+    75→Create an editable pricing configuration in the SaaS administration panel.
+    76→
+    77→Initial proposed prices for pilot testing:
+    78→
+    79→- One-time deployment fee: ₦60,000.
+    80→- Annual subscription fee: ₦120,000.
+    81→- Total first-year payment: ₦180,000.
+    82→- Subsequent annual renewal: ₦120,000, unless the price is changed under the applicable pricing and renewal terms.
+    83→
+    84→These are proposed defaults, not permanent prices. An authorised platform administrator must be able to change them without editing source code.
+    85→
+    86→The deployment fee must be charged separately from the recurring subscription fee, even if both amounts appear together on the first invoice.
+    87→
+    88→Never charge the deployment fee again during an ordinary annual renewal.
+    89→
+    90→Allow the platform administrator to create additional plans, customised quotes, introductory offers, and discounts when required.
+    91→
+    92→## 3. DEVELOPMENT TECHNOLOGY
+    93→
+    94→Use this stack unless the existing project has a compelling technical reason to retain a different compatible implementation.
+    95→
+    96→- Frontend and application framework: Next.js with the App Router.
+    97→- Programming language: TypeScript with strict type checking.
+    98→- Styling: Tailwind CSS.
+    99→- UI components: shadcn/ui or an equivalent accessible component library.
+   100→- Database: Supabase PostgreSQL.
+   101→- Authentication: Supabase Auth or another properly integrated authentication system compatible with the selected architecture.
+   102→- Server-side processing: secure Next.js server actions, route handlers, and server-only business logic.
+   103→- Database access: official Supabase tooling and PostgreSQL migrations.
+   104→- Payment processing: Paystack as the initial Nigerian payment provider, with test-mode support.
+   105→- AI: a server-side integration with a configurable supported language-model provider.
+   106→- Forecasting: a statistical forecasting service supplemented by AI-generated explanations.
+   107→- Hosting: a production-compatible hosting environment for Next.js and Supabase.
+   108→- Testing: automated unit, integration, database security, and end-to-end tests.
+   109→
+   110→Use stable, mutually compatible package versions. Consult current official documentation before implementing authentication, database access, payment webhooks, and AI integrations.
+   111→
+   112→### Supabase database configuration
+   113→
+   114→Use the following Supabase PostgreSQL connection string as the initial connection template:
+   115→
+   116→`postgresql://postgres.jcweqbnajgxxnauujtbh:[YOUR-PASSWORD]@aws-0-eu-west-1.pooler.supabase.com:5432/postgres`
+   117→
+   118→The `[YOUR-PASSWORD]` portion is a placeholder. Replace it with the actual database password in the local environment configuration before attempting to connect.
+   119→
+   120→Configure the connection through an environment variable such as `DATABASE_URL`.
+   121→
+   122→Requirements:
+   123→
+   124→- Store actual credentials in the appropriate local environment file, such as `.env.local`, or in the deployment platform's environment-variable settings.
+   125→- Ensure all real environment files are included in `.gitignore`.
+   126→- Keep `.env.example` limited to placeholder values.
+   127→- Never put the actual database password in application source code, client-side code, documentation, screenshots, logs, or Git commits.
+   128→- If the password contains special characters, URL-encode those characters correctly in the connection string.
+   129→- Verify connectivity before attempting database migrations.
+   130→- Consult current Supabase and database-tool documentation to determine whether the chosen pooler connection mode is suitable for runtime queries and migrations.
+   131→- If the project's migration tool requires a direct database connection or a different connection mode, explain the requirement and configure the appropriate environment variable only when the necessary connection information is available.
+   132→- Do not invent missing database credentials or claim that the database is connected before verifying the connection.
+   133→
+   134→Never include API keys, payment secrets, database passwords, or other private credentials in source code, browser bundles, prompts, logs, or Git commits.
+   135→
+   136→Use environment variables and provide an `.env.example` file containing placeholder values only.
+   137→
+   138→If the existing project already has a working foundation, inspect it first and preserve useful code. Do not unnecessarily replace the framework or rewrite working files.
+   139→
+   140→## 4. NON-NEGOTIABLE DEVELOPMENT RULES
+   141→
+   142→1. Do not build everything in one uncontrolled generation.
+   143→2. Inspect the project workspace, package scripts, dependencies, existing routes, database structure, and environment configuration before changing files.
+   144→3. Establish the architecture, requirements, database schema, security design, and implementation sequence before building the application modules.
+   145→4. Implement one coherent functional module at a time.
+   146→5. Do not mark a feature complete merely because its interface renders.
+   147→6. Do not use fake buttons that appear functional but have no working implementation.
+   148→7. Do not use hard-coded dashboard figures as substitutes for real database queries.
+   149→8. Do not generate fake payment-success states.
+   150→9. Do not trust calculations, prices, permissions, tenant IDs, or subscription statuses supplied by the browser.
+   151→10. Perform important validation and calculations on the server or database.
+   152→11. Maintain automated tests throughout development.
+   153→12. Run available lint, type-check, test, and build commands after meaningful changes.
+   154→13. Fix existing errors that block the project, but avoid unrelated refactoring.
+   155→14. Document incomplete work honestly and identify missing credentials or external configuration.
+   156→15. Never silently delete existing business data or make destructive database changes.
+   157→
+   158→If a feature cannot be completed in the current environment, build the appropriate integration boundary, explain what remains, and provide precise setup instructions. Never claim an external service works until the integration has been verified.
+   159→
+   160→## 5. INITIAL ARCHITECTURE
+   161→
+   162→Build one multi-tenant application with three distinct operational layers.
+   163→
+   164→### Layer A: SaaS platform administration
+   165→
+   166→Used exclusively by authorised platform administrators to manage the SaaS itself.
+   167→
+   168→Responsibilities include:
+   169→
+   170→- Registering and reviewing customer businesses.
+   171→- Managing deployment and subscription fees.
+   172→- Managing plans and permitted features.
+   173→- Monitoring payment status and annual renewal dates.
+   174→- Managing customer support and technical issues.
+   175→- Viewing platform-level operational metrics.
+   176→- Configuring AI provider settings and usage limits.
+   177→- Managing security settings and platform-wide announcements.
+   178→- Reviewing operational audit events within authorised access boundaries.
+   179→
+   180→### Layer B: Individual business workspace
+   181→
+   182→Each customer business receives an isolated workspace with:
+   183→
+   184→- Business profile and branding.
+   185→- Pharmacy department.
+   186→- Supermarket department.
+   187→- Shared POS.
+   188→- Inventory and purchasing.
+   189→- Suppliers.
+   190→- Staff accounts and permissions.
+   191→- Expenses and financial reports.
+   192→- AI business intelligence.
+   193→- Subscription and account settings.
+   194→
+   195→The first release supports one active store location per business. Design the data model so the product can support multiple locations in a future phase, but do not build full multi-branch operations now.
+   196→
+   197→### Layer C: Local POS operation
+   198→
+   199→The POS must prioritise transaction speed, barcode scanning, accurate stock movements, receipt printing, and resilience to temporary internet outages.
+   200→
+   201→Design an offline-capable POS architecture using appropriate local persistence, such as IndexedDB, and a controlled synchronisation queue.
+   202→
+   203→For the first release, support a clearly defined single-terminal offline sales mode. Do not claim reliable shared-stock operation across multiple disconnected terminals until the appropriate local networking, conflict resolution, and synchronisation functionality has been implemented and tested.
+   204→
+   205→Keep cloud-hosted business management separate from the local transaction interface where appropriate.
+   206→
+   207→## 6. USER ROLES AND PERMISSIONS
+   208→
+   209→Implement role-based access control.
+   210→
+   211→Required roles:
+   212→
+   213→### Platform administrator
+   214→Manages SaaS customers, plans, deployment fees, subscriptions, support, and platform configuration.
+   215→
+   216→### Business owner
+   217→Has access to the business workspace, financial reports, inventory, subscription information, staff management, and authorised business settings.
+   218→
+   219→### Business manager
+   220→Manages normal store operations, purchasing, inventory, reports, approvals, and staff activities according to assigned permissions.
+   221→
+   222→### Cashier
+   223→Processes sales, records permitted payments, prints receipts, and handles authorised transaction operations. Cannot independently modify product costs, supplier records, or sensitive business settings.
+   224→
+   225→### Inventory manager or storekeeper
+   226→Manages stock receiving, stock counts, stock movements, batch records where authorised, purchase receiving, and inventory reports.
+   227→
+   228→### Pharmacist or authorised pharmacy personnel
+   229→Handles pharmacy-specific dispensing and related workflows according to assigned privileges and applicable professional requirements.
+   230→
+   231→### Accountant or reporting user
+   232→Accesses permitted financial reports, reconciliations, expenses, and exports without automatically gaining permission to change operational transactions.
+   233→
+   234→Permissions must be configurable where appropriate.
+   235→
+   236→A user can have more than one authorised role, but permissions must be explicit.
+   237→
+   238→Enforce permissions on the server and in the database. Hiding a menu item in the frontend is not a security control.
+   239→
+   240→Test that users cannot access features merely by manually entering a route or changing a request.
+   241→
+   242→## 7. PHASE 1: CORE BUSINESS OPERATIONS
+   243→
+   244→Phase 1 must produce a usable business management platform before advanced AI is introduced.
+   245→
+   246→### MODULE 1: BUSINESS REGISTRATION AND ONBOARDING
+   247→
+   248→Create a guided onboarding workflow.
+   249→
+   250→Collect:
+   251→
+   252→- Business name.
+   253→- Owner's name and contact information.
+   254→- Business email and phone number.
+   255→- Business address and state.
+   256→- Business logo.
+   257→- Pharmacy, supermarket, or combined pharmacy-supermarket business type.
+   258→- Business configuration and preferred currency.
+   259→- Receipt and invoice settings.
+   260→- Initial staff and permissions.
+   261→- Initial deployment configuration.
+   262→
+   263→Use NGN as the initial default currency.
+   264→
+   265→Create a business workspace and associate every business record with the correct tenant.
+   266→
+   267→Provide onboarding progress tracking.
+   268→
+   269→Support importing existing product data from clean CSV or Excel-compatible files where practical.
+   270→
+   271→Where data imports fail, display understandable validation errors and allow corrections. Do not silently omit invalid rows.
+   272→
+   273→### MODULE 2: BUSINESS DASHBOARD
+   274→
+   275→Build a real-time or appropriately refreshed operational dashboard for the business owner.
+   276→
+   277→Show:
+   278→
+   279→- Today's sales.
+   280→- Sales compared with a selected previous period.
+   281→- Estimated gross profit based on recorded cost information.
+   282→- Pharmacy sales and performance.
+   283→- Supermarket sales and performance.
+   284→- Combined business sales.
+   285→- Low-stock products.
+   286→- Products requiring expiry review.
+   287→- Recent purchases and expenses.
+   288→- Outstanding supplier balances.
+   289→- Recent refunds, voids, and unusual transactions.
+   290→- Current cashier shift and reconciliation status.
+   291→- Subscription status and upcoming renewal date.
+   292→
+   293→Provide date filters where appropriate.
+   294→
+   295→Every financial figure must come from validated database queries. Show the reporting period and data freshness.
+   296→
+   297→Distinguish gross profit from net profit. Do not label sales minus product cost as net profit because operating expenses and other adjustments may still need to be deducted.
+   298→
+   299→### MODULE 3: PRODUCT CATALOGUE
+   300→
+   301→Create a central product catalogue with department-specific behaviour.
+   302→
+   303→Each product should support:
+   304→
+   305→- Product name.
+   306→- SKU or internal product code.
+   307→- Barcode.
+   308→- Description.
+   309→- Category and subcategory.
+   310→- Department assignment.
+   311→- Product type.
+   312→- Purchase cost.
+   313→- Selling price.
+   314→- Optional wholesale price.
+   315→- Applicable tax configuration.
+   316→- Unit of measurement.
+   317→- Unit conversion rules.
+   318→- Supplier relationships.
+   319→- Reorder threshold.
+   320→- Product image, where needed.
+   321→- Active or inactive status.
+   322→- Created and last-updated timestamps.
+   323→
+   324→Support medicines and ordinary retail products in the same catalogue while enforcing their different requirements.
+   325→
+   326→A product must be assignable to the pharmacy department, supermarket department, or both where appropriate.
+   327→
+   328→Allow barcode scanning and manual product searches.
+   329→
+   330→Prevent accidental duplicate barcode assignments within the applicable business scope.
+   331→
+   332→Do not assume every medicine uses the same unit size. Support configurable units such as cartons, packs, strips, bottles, and individual units.
+   333→
+   334→Only allow conversions that are explicitly configured and validated.
+   335→
+   336→### MODULE 4: PHARMACY INVENTORY
+   337→
+   338→Implement pharmacy-specific inventory control.
+   339→
+   340→Required capabilities:
+   341→
+   342→- Batch or lot number tracking.
+   343→- Batch-specific expiry dates where applicable.
+   344→- Quantity received and quantity remaining.
+   345→- Purchase cost by batch.
+   346→- Supplier information.
+   347→- Goods-received records.
+   348→- Batch-level stock adjustments with reasons.
+   349→- Low-stock notifications.
+   350→- Upcoming-expiry alerts.
+   351→- Expired-stock blocking for normal sales.
+   352→- Near-expiry stock valuation.
+   353→- Stock movement history.
+   354→- Supplier return workflows where appropriate.
+   355→- Inventory reports grouped by product and batch.
+   356→
+   357→Implement FEFO, meaning first-expiry-first-out, for eligible medicine batches.
+   358→
+   359→Where batch allocation is automatic, select eligible batches with the earliest expiry date first and preserve the allocation in the transaction record.
+   360→
+   361→Expired batches must not be available for ordinary sale or dispensing.
+   362→
+   363→Do not treat medicines with the same name as interchangeable unless the product and relevant attributes match.
+   364→
+   365→Support configurable warning periods for expiry notifications.
+   366→
+   367→Do not implement clinical diagnosis or autonomous treatment recommendations.
+   368→
+   369→Prescription and dispensing workflows must respect role permissions and professional requirements. Where legal or professional requirements are uncertain, flag the issue for review rather than inventing rules.
+   370→
+   371→### MODULE 5: SUPERMARKET INVENTORY
+   372→
+   373→Implement general retail inventory features.
+   374→
+   375→Include:
+   376→
+   377→- Stock receiving.
+   378→- Barcode-based identification.
+   379→- Configurable measurement units.
+   380→- Stock adjustments.
+   381→- Reorder thresholds.
+   382→- Low-stock alerts.
+   383→- Damaged stock records.
+   384→- Supplier returns.
+   385→- Stock valuation.
+   386→- Fast-moving and slow-moving product reports.
+   387→- Product price changes.
+   388→- Promotion and discount configuration.
+   389→- Purchase cost history.
+   390→
+   391→Support products sold in different units, such as cartons purchased from suppliers and individual pieces sold at checkout.
+   392→
+   393→Record every relevant stock change as an auditable movement.
+   394→
+   395→### MODULE 6: UNIFIED POINT OF SALE
+   396→
+   397→This is a central product feature.
+   398→
+   399→Create one fast, clear POS that supports sales from both departments.
+   400→
+   401→A cashier must be able to place pharmacy and supermarket items in the same basket, complete one sale, accept permitted payment methods, and print one receipt.
+   402→
+   403→Required functionality:
+   404→
+   405→- Barcode scanning.
+   406→- Product search.
+   407→- Keyboard-friendly controls.
+   408→- Shopping cart.
+   409→- Quantity changes.
+   410→- Line-item and transaction-level discount permissions.
+   411→- Automatic price calculation.
+   412→- Applicable tax calculations from validated configurable settings.
+   413→- Cash payments.
+   414→- Bank transfer payments with optional reference numbers.
+   415→- Card payment recording.
+   416→- Split tender where configured.
+   417→- Payment confirmation and remaining-balance calculation.
+   418→- Completed sale receipt.
+   419→- Receipt reprinting with audit logging.
+   420→- Sale history.
+   421→- Returns and refunds with permission checks.
+   422→- Void and cancellation workflows.
+   423→- Manager approval for sensitive operations.
+   424→- Cashier shifts.
+   425→- Opening cash balance.
+   426→- Cash movement records.
+   427→- Shift closing and reconciliation.
+   428→- Discrepancy reports.
+   429→
+   430→Do not store card numbers, PINs, or sensitive payment credentials.
+   431→
+   432→In-store card transactions should be recorded or integrated only through an approved payment-terminal workflow. Do not assume the SaaS's online payment integration automatically processes card-present payments at the till.
+   433→
+   434→Every completed sale must produce consistent, linked records for:
+   435→
+   436→- Sale header.
+   437→- Sale line items.
+   438→- Department attribution.
+   439→- Payment records.
+   440→- Applicable stock movements.
+   441→- Cost-of-goods-sold calculations.
+   442→- Receipt details.
+   443→- Audit events.
+   444→
+   445→Use reliable database transactions to prevent partial sales and inconsistent inventory.
+   446→
+   447→Do not decrement stock twice because a request is retried or a connection reconnects.
+   448→
+   449→Give each transaction an appropriate unique identifier and implement idempotency for retryable operations.
+   450→
+   451→### MODULE 7: PURCHASES AND SUPPLIERS
+   452→
+   453→Create supplier management and purchasing workflows.
+   454→
+   455→Supplier records should include:
+   456→
+   457→- Supplier name.
+   458→- Contact details.
+   459→- Address.
+   460→- Supplier category.
+   461→- Payment terms.
+   462→- Notes.
+   463→- Account status.
+   464→
+   465→Purchasing features:
+   466→
+   467→- Purchase orders.
+   468→- Supplier invoices.
+   469→- Expected delivery.
+   470→- Quantity ordered.
+   471→- Quantity received.
+   472→- Purchase cost.
+   473→- Partial deliveries.
+   474→- Rejected or damaged deliveries.
+   475→- Outstanding supplier balances.
+   476→- Purchase returns.
+   477→- Supplier transaction history.
+   478→- Purchase price changes.
+   479→
+   480→When goods are received, update the appropriate inventory records through controlled stock movements.
+   481→
+   482→Medicine purchases must preserve relevant batch and expiry information.
+   483→
+   484→Never assume that placing a purchase order automatically means the stock has been received.
+   485→
+   486→### MODULE 8: EXPENSES AND OPERATIONAL FINANCE
+   487→
+   488→Allow authorised users to record business expenses.
+   489→
+   490→Examples include rent, electricity, salaries, transport, internet, maintenance, and miscellaneous expenses.
+   491→
+   492→Record:
+   493→
+   494→- Expense category.
+   495→- Amount.
+   496→- Date.
+   497→- Payment method.
+   498→- Description.
+   499→- Optional supplier or payee.
+   500→- Receipt attachment where appropriate.
+   501→- Entered-by user.
+   502→- Approval status where required.
+   503→
+   504→Report separately on:
+   505→
+   506→- Sales revenue.
+   507→- Discounts.
+   508→- Refunds.
+   509→- Cost of goods sold.
+   510→- Estimated gross profit.
+   511→- Recorded operating expenses.
+   512→- Outstanding supplier liabilities.
+   513→- Cash and recorded payment movements.
+   514→
+   515→Clearly disclose what a report includes and excludes. Do not claim that a simple expense ledger is a complete statutory accounting system.
+   516→
+   517→Tax rules must be configurable and reviewed for applicable Nigerian requirements. Do not hard-code assumptions about tax rates or filing obligations.
+   518→
+   519→### MODULE 9: REPORTS AND EXPORTS
+   520→
+   521→Create reports for:
+   522→
+   523→- Daily, weekly, monthly, and custom-period sales.
+   524→- Sales by department.
+   525→- Sales by product.
+   526→- Sales by cashier.
+   527→- Gross profit by product and department.
+   528→- Purchase history.
+   529→- Supplier balances.
+   530→- Stock valuation.
+   531→- Low-stock products.
+   532→- Expiring and expired batches.
+   533→- Stock adjustments.
+   534→- Returns and refunds.
+   535→- Discount and void activity.
+   536→- Expense summaries.
+   537→- Payment methods.
+   538→- Cashier reconciliation.
+   539→- Audit history.
+   540→
+   541→Provide suitable CSV or Excel exports and print-friendly report layouts.
+   542→
+   543→Use the business logo and identity where appropriate.
+   544→
+   545→Ensure exported reports are permission-protected and tenant-scoped.
+   546→
+   547→### MODULE 10: STAFF AND AUDIT MANAGEMENT
+   548→
+   549→Implement secure user management within each business.
+   550→
+   551→Business owners and authorised managers must be able to:
+   552→
+   553→- Invite or create staff users.
+   554→- Assign roles.
+   555→- Activate or deactivate accounts.
+   556→- Reset access through secure authentication workflows.
+   557→- Review relevant activity logs.
+   558→
+   559→Audit sensitive actions, including:
+   560→
+   561→- Login and security events where appropriate.
+   562→- Product price changes.
+   563→- Stock adjustments.
+   564→- Purchases and goods receiving.
+   565→- Discounts.
+   566→- Returns and refunds.
+   567→- Voids.
+   568→- Manual payment corrections.
+   569→- Staff permission changes.
+   570→- Subscription and plan changes.
+   571→
+   572→Audit records should identify the actor, timestamp, action, affected record, and reason where required.
+   573→
+   574→Users must not be able to rewrite their own audit history through the normal application.
+   575→
+   576→## 8. SUBSCRIPTION AND DEPLOYMENT BILLING
+   577→
+   578→Build subscription management as a real application module.
+   579→
+   580→### Separate one-time deployment fee
+   581→
+   582→The first invoice should separately identify:
+   583→
+   584→- Deployment and setup.
+   585→- First annual subscription.
+   586→- Any separately agreed additional services or discounts.
+   587→- Applicable taxes where required.
+   588→
+   589→Deployment status should track stages such as:
+   590→
+   591→- Awaiting payment.
+   592→- Payment confirmed.
+   593→- Awaiting setup.
+   594→- Setup in progress.
+   595→- Awaiting customer data.
+   596→- Ready for verification.
+   597→- Live.
+   598→
+   599→Do not claim that deployment has been completed merely because an invoice was paid.
+   600→
+   601→### Annual subscription
+   602→
+   603→The initial billing interval is 12 months, paid upfront.
+   604→
+   605→Store:
+   606→
+   607→- Subscription plan.
+   608→- Annual fee.
+   609→- Start date.
+   610→- Renewal date.
+   611→- Payment history.
+   612→- Current status.
+   613→- Grace-period end date where applicable.
+   614→- Renewal notices.
+   615→- Relevant plan changes.
+   616→
+   617→Support subscription states such as:
+   618→
+   619→- Pending payment.
+   620→- Active.
+   621→- Past due.
+   622→- Grace period.
+   623→- Suspended.
+   624→- Expired.
+   625→- Cancelled.
+   626→
+   627→Provide an authorised way for the platform administrator to grant an approved complimentary trial or extend an account, with an audit record.
+   628→
+   629→### Payment integration
+   630→
+   631→Use Paystack as the initial online payment provider.
+   632→
+   633→Support payment for the one-time deployment fee and the annual subscription.
+   634→
+   635→Use test mode during development.
+   636→
+   637→If automatic annual renewal is implemented, obtain the necessary customer authorisation and implement the provider's documented subscription and webhook requirements. Do not assume that an arbitrary payment will permit future automatic debits.
+   638→
+   639→Manual annual renewal must be supported as an alternative.
+   640→
+   641→Verify payment completion on the server using the provider's documented verification mechanism.
+   642→
+   643→Verify webhook authenticity according to official documentation.
+   644→
+   645→Implement idempotent payment processing so repeated callbacks cannot activate duplicate subscriptions, duplicate deployment orders, or duplicate invoices.
+   646→
+   647→Never activate a paid subscription merely because the browser redirects to a success page.
+   648→
+   649→### Renewal and expiry
+   650→
+   651→Provide configurable renewal reminders, initially targeting 30, 14, 7, and 1 day before expiry.
+   652→
+   653→Use a reasonable configurable grace period, initially seven days.
+   654→
+   655→Do not interrupt a sale halfway through because a subscription has just expired.
+   656→
+   657→The enforcement strategy must be documented and implemented consistently.
+   658→
+   659→After the grace period, restrict normal operational access according to the applicable subscription terms while preserving a secure way for authorised customers to review billing, retrieve their data, and request an export.
+   660→
+   661→Do not delete business data merely because a customer does not renew.
+   662→
+   663→### Commercial configuration
+   664→
+   665→Allow the platform administrator to configure:
+   666→
+   667→- Deployment fees.
+   668→- Annual prices.
+   669→- Plans and features.
+   670→- Supported terminal limits.
+   671→- Data retention rules.
+   672→- Backup policies.
+   673→- AI usage limits.
+   674→- Support entitlements.
+   675→- Discounts.
+   676→- Renewal and grace-period terms.
+   677→
+   678→Keep pricing configuration in the database or a secure administrative configuration layer, not scattered throughout application source code.
+   679→
+   680→## 9. PHASE 2: AI BUSINESS INTELLIGENCE
+   681→
+   682→Phase 2 must build on the accurate business records created in Phase 1.
+   683→
+   684→AI must help business owners understand performance and take action. It must not replace reliable financial calculations.
+   685→
+   686→### MODULE 11: AI-GENERATED BUSINESS SUMMARIES
+   687→
+   688→Create an AI reporting service that can produce daily, weekly, and monthly business summaries.
+   689→
+   690→Summaries should cover, where supported by available data:
+   691→
+   692→- Total sales.
+   693→- Sales by department.
+   694→- Changes from a comparable period.
+   695→- Estimated gross profit.
+   696→- Best-performing products.
+   697→- Poor-performing or slow-moving products.
+   698→- Stockout risks.
+   699→- Expiring stock exposure.
+   700→- Supplier price increases.
+   701→- Unusual discounts or refunds.
+   702→- Purchasing recommendations.
+   703→- Inventory discrepancies requiring review.
+   704→
+   705→Example of the desired style:
+   706→
+   707→"Sales increased compared with the previous week, mainly because supermarket beverage sales improved. Several pharmacy products are approaching their reorder thresholds. Review three medicine batches due to expire soon, and confirm the cost changes recorded for two frequently sold products."
+   708→
+   709→This example is illustrative, not actual business data.
+   710→
+   711→The system must generate such statements only when the database supports them.
+   712→
+   713→Clearly identify missing or incomplete data.
+   714→
+   715→Do not invent percentages, causal explanations, savings estimates, or profit figures.
+   716→
+   717→Show the period covered and the timestamp of the latest underlying data.
+   718→
+   719→Provide summaries through the business dashboard. Email delivery can be enabled when configured. WhatsApp delivery should be implemented only through an authorised supported integration and appropriate customer consent.
+   720→
+   721→### MODULE 12: ASK YOUR BUSINESS DATA QUESTIONS
+   722→
+   723→Build a controlled natural-language interface for authorised users to ask operational questions.
+   724→
+   725→Examples:
+   726→
+   727→- "Which products generated the highest gross profit last month?"
+   728→- "What is the value of stock expected to expire in the next 60 days?"
+   729→- "Which products need restocking?"
+   730→- "Compare pharmacy sales with supermarket sales this week."
+   731→- "Which supplier has increased prices the most?"
+   732→- "Show products with frequent stock adjustments."
+   733→- "How did today's sales compare with last Monday?"
+   734→
+   735→Use validated server-side analytical functions or an explicit set of authorised data-query tools.
+   736→
+   737→Do not give the AI unrestricted database access or allow it to execute arbitrary SQL generated from user text.
+   738→
+   739→Every request must respect the signed-in user's permissions and the tenant's data boundaries.
+   740→
+   741→The AI must never expose another business's records.
+   742→
+   743→Answers about important figures should include the reporting period, the basis of calculation, and a link or navigation path to the supporting report where possible.
+   744→
+   745→If a question cannot be answered from available records, explain what information is missing.
+   746→
+   747→The AI must not perform unauthorised stock changes, issue refunds, change prices, modify staff permissions, or execute financial transactions. It may recommend an action, but authorised business users must perform sensitive operations through normal validated workflows.
+   748→
+   749→### MODULE 13: ADVANCED DEMAND AND INVENTORY FORECASTING
+   750→
+   751→Build forecasting around real sales, stock movements, product costs, stock availability, and supplier lead times.
+   752→
+   753→Forecasts should help answer:
+   754→
+   755→- Which products are likely to run out soon?
+   756→- What quantities should be considered for replenishment?
+   757→- Which products may become overstocked?
+   758→- Which products are slowing down?
+   759→- What stock value is at risk from approaching expiries?
+   760→- How might upcoming demand differ from recent demand?
+   761→
+   762→Use statistical forecasting methods appropriate to the available history, such as moving averages, exponential smoothing, or other justified approaches.
+   763→
+   764→Use more advanced models only when they improve measured performance.
+   765→
+   766→Do not use a language model as a substitute for a numerical forecasting engine.
+   767→
+   768→For each forecast, record or display:
+   769→
+   770→- Product.
+   771→- Forecast period.
+   772→- Estimated demand.
+   773→- Available stock.
+   774→- Relevant incoming purchase quantities where known.
+   775→- Supplier lead time where known.
+   776→- Suggested replenishment quantity where justified.
+   777→- Confidence or uncertainty indicator.
+   778→- Key assumptions.
+   779→- Forecast generation date.
+   780→
+   781→The system must distinguish observed sales from underlying demand. A stockout can reduce recorded sales without indicating that customer demand has fallen.
+   782→
+   783→Where the business lacks enough history, display a clearly labelled preliminary estimate or explain that insufficient data is available.
+   784→
+   785→Do not present estimates as guaranteed outcomes.
+   786→
+   787→Provide forecast-versus-actual comparisons as new sales records become available.
+   788→
+   789→Allow authorised users to configure appropriate reorder thresholds and review suggested purchase quantities before placing an order.
+   790→
+   791→### MODULE 14: AI COST AND ACCESS CONTROLS
+   792→
+   793→AI must operate within configurable subscription limits.
+   794→
+   795→Support:
+   796→
+   797→- Per-business usage tracking.
+   798→- Usage limits by plan.
+   799→- Rate limiting.
+   800→- Reasonable response-length limits.
+   801→- Secure provider key management.
+   802→- Error handling.
+   803→- Logging that avoids unnecessarily exposing business or customer data.
+   804→- Safe fallback behaviour when the AI provider is unavailable.
+   805→
+   806→Financial aggregations should be calculated using validated application or database logic before being sent to the AI for explanation.
+   807→
+   808→Send only the minimum information necessary for the task.
+   809→
+   810→Do not send unnecessary patient, prescription, or personally identifiable information to external AI providers.
+   811→
+   812→Where health-related information might be involved, assess the applicable privacy requirements before enabling any such processing.
+   813→
+   814→## 10. DATABASE DESIGN
+   815→
+   816→Design a normalised PostgreSQL schema with explicit relationships, foreign keys, indexes, unique constraints, validation constraints, and repeatable database migrations.
+   817→
+   818→The schema should include appropriate tables or equivalent models for:
+   819→
+   820→- Business tenants.
+   821→- User profiles.
+   822→- Business memberships and roles.
+   823→- Business settings.
+   824→- Subscription plans.
+   825→- Business subscriptions.
+   826→- Deployment orders and setup fees.
+   827→- Invoices and invoice lines.
+   828→- Payment transactions and webhook events.
+   829→- Product categories.
+   830→- Products.
+   831→- Product barcodes.
+   832→- Units and unit conversions.
+   833→- Suppliers.
+   834→- Supplier products where useful.
+   835→- Purchase orders.
+   836→- Purchase order lines.
+   837→- Goods receipts.
+   838→- Pharmacy batches.
+   839→- Stock movements.
+   840→- Stock adjustments.
+   841→- Sales.
+   842→- Sale items.
+   843→- Sale and payment allocations.
+   844→- Refunds and returns.
+   845→- Cashier shifts.
+   846→- Expenses.
+   847→- Audit events.
+   848→- Notifications.
+   849→- AI summaries and generation metadata.
+   850→- Forecasts and forecast history.
+   851→- AI usage records.
+   852→- Import jobs and validation errors.
+   853→- Configurable system and business settings.
+   854→
+   855→You may introduce additional models when necessary.
+   856→
+   857→### Database rules
+   858→
+   859→Every business-owned record must have a clear tenant association.
+   860→
+   861→Where appropriate, use composite uniqueness and foreign-key constraints to ensure that linked records belong to the same tenant.
+   862→
+   863→Use appropriate decimal types for financial amounts and quantities requiring fractional units. Do not use floating-point arithmetic for money.
+   864→
+   865→Store timestamps consistently and display dates in the business's configured timezone.
+   866→
+   867→Use database transactions for operations involving multiple related records.
+   868→
+   869→Prefer an auditable stock movement ledger rather than treating a mutable stock balance as the only inventory record.
+   870→
+   871→A cached stock balance may be maintained for performance, but it must be reconcilable against the movement ledger.
+   872→
+   873→Preserve the original sale and its accounting evidence when processing a return or refund. Use linked reversal or adjustment records rather than silently rewriting historical transactions.
+   874→
+   875→Define the costing approach for each supported product type and make profit calculations consistent with that approach.
+   876→
+   877→## 11. SECURITY AND MULTI-TENANT ISOLATION
+   878→
+   879→Security is a release requirement, not a later enhancement.
+   880→
+   881→Implement:
+   882→
+   883→- Secure authentication.
+   884→- Email verification and account recovery where supported.
+   885→- Server-side authorisation.
+   886→- Tenant-scoped queries.
+   887→- Database Row Level Security.
+   888→- Explicit database grants.
+   889→- Input validation.
+   890→- Rate limiting on sensitive endpoints.
+   891→- Secure cookie and session practices.
+   892→- Protection against common web application vulnerabilities.
+   893→- Secret management.
+   894→- Audit logging.
+   895→- Automated database backups with a tested recovery procedure.
+   896→- A documented process for responding to security incidents.
+   897→
+   898→Enable and test Row Level Security for every exposed table containing private data.
+   899→
+   900→Ensure the grants and RLS policies work together correctly.
+   901→
+   902→Test both permitted and forbidden operations for different users and tenants.
+   903→
+   904→Do not expose a Supabase service-role key or equivalent privileged secret to the browser.
+   905→
+   906→Do not rely on an unverified tenant ID supplied by the frontend. Derive the user's authorised tenant memberships from trusted server-side identity and membership records.
+   907→
+   908→Test that a user from Business A cannot read, update, insert, delete, export, or infer protected records from Business B.
+   909→
+   910→Protect reporting endpoints and AI tools against cross-tenant data exposure.
+   911→
+   912→Treat platform administrator privileges separately from ordinary business accounts and audit sensitive administrative access.
+   913→
+   914→## 12. OFFLINE POS AND SYNCHRONISATION
+   915→
+   916→The POS must remain usable during supported network outages.
+   917→
+   918→Implement the following design:
+   919→
+   920→- Cache the necessary product catalogue and permitted settings locally.
+   921→- Persist completed offline transactions in durable local storage.
+   922→- Give each transaction a unique identifier.
+   923→- Maintain a queue for transactions awaiting synchronisation.
+   924→- Retry failed synchronisation safely.
+   925→- Make server-side processing idempotent.
+   926→- Preserve a record of synchronisation state.
+   927→- Provide clear indicators for online, offline, pending, and failed transactions.
+   928→- Prevent duplicate stock movements when a request is retried.
+   929→- Provide a recovery workflow for transactions that cannot be reconciled automatically.
+   930→
+   931→Use versioned records or equivalent mechanisms where needed to identify stale product prices or settings.
+   932→
+   933→The offline interface must clearly disclose that cloud inventory may be out of date.
+   934→
+   935→If a stock quantity cannot be confirmed because the POS is offline, apply explicitly defined offline selling rules and record the relevant warning.
+   936→
+   937→Do not represent offline transactions as cloud-synchronised until the server confirms successful processing.
+   938→
+   939→Do not silently discard locally stored sales.
+   940→
+   941→For the first release, limit disconnected shared-stock operation to the supported single-terminal offline scenario. Do not pretend that multiple disconnected terminals can safely maintain one shared live stock balance without a proper coordination design.
+   942→
+   943→Document supported hardware, browser requirements, printing options, backups, and recovery procedures.
+   944→
+   945→## 13. USER INTERFACE AND EXPERIENCE
+   946→
+   947→Design a polished professional business application suitable for daily use in a real retail shop.
+   948→
+   949→Visual direction:
+   950→
+   951→- Clean, modern business software.
+   952→- Clear typography and strong visual hierarchy.
+   953→- Fast navigation.
+   954→- Accessible colour contrast.
+   955→- Responsive layouts.
+   956→- Useful tables and filters.
+   957→- Clear forms and validation.
+   958→- Meaningful empty states.
+   959→- Actionable error messages.
+   960→- Restrained animation.
+   961→- Excellent usability on desktop computers and tablets.
+   962→
+   963→Do not sacrifice POS speed for decoration.
+   964→
+   965→The checkout must be keyboard-friendly, with barcode scanning requiring minimal interaction.
+   966→
+   967→Design distinct interfaces for:
+   968→
+   969→- SaaS administration.
+   970→- Business owner dashboard.
+   971→- Manager operations.
+   972→- POS checkout.
+   973→- Inventory and purchasing.
+   974→- Reporting and AI insights.
+   975→
+   976→Provide appropriate mobile layouts for management tasks without assuming that a small phone interface is the best environment for every cashier workflow.
+   977→
+   978→Include loading, success, error, and empty states.
+   979→
+   980→Ensure that buttons, filters, navigation, forms, and interactive controls perform their intended actions.
+   981→
+   982→## 14. TESTING REQUIREMENTS
+   983→
+   984→Create automated tests for core business rules.
+   985→
+   986→At minimum, test the following scenarios.
+   987→
+   988→### Tenant security
+   989→
+   990→- Business A cannot access Business B's data.
+   991→- A cashier cannot access owner-only operations.
+   992→- An expired or unauthorised session cannot continue using protected functionality.
+   993→- AI requests remain restricted to the user's authorised business data.
+   994→
+   995→### POS and inventory
+   996→
+   997→- A combined pharmacy-supermarket basket generates one correct sale.
+   998→- Stock movements are created exactly once.
+   999→- Failed transactions do not leave partial financial or inventory updates.
+  1000→- A retry does not duplicate a sale.
+  1001→- Returns and refunds generate correct linked adjustments.
+  1002→- Expired medicine batches cannot be sold through normal workflows.
+  1003→- FEFO batch allocation works as configured.
+  1004→- Carton-to-piece conversion is accurate.
+  1005→- Payment allocations reconcile to the amount due.
+  1006→- Shift totals can be reconciled against transaction records.
+  1007→
+  1008→### Billing
+  1009→
+  1010→- The deployment fee is charged once.
+  1011→- The annual subscription is charged for the correct period.
+  1012→- The deployment fee is not repeated on ordinary renewals.
+  1013→- Invalid or unverified payment notifications cannot activate an account.
+  1014→- Repeated payment webhooks do not duplicate invoices or activations.
+  1015→- Renewal reminders are generated on schedule.
+  1016→- Expired subscriptions enter the configured grace and access states correctly.
+  1017→
+  1018→### AI and forecasts
+  1019→
+  1020→- Summaries use actual, permission-filtered business data.
+  1021→- Missing cost information is disclosed rather than invented.
+  1022→- Forecasts identify insufficient historical data.
+  1023→- The AI cannot execute arbitrary SQL.
+  1024→- Forecast explanations distinguish estimates from recorded facts.
+  1025→- AI provider failures do not corrupt business transactions.
+  1026→- AI usage limits are enforced per business.
+  1027→
+  1028→### Offline operation
+  1029→
+  1030→- A transaction is persisted locally during an internet outage.
+  1031→- Reconnection synchronises the transaction once.
+  1032→- Duplicate requests do not double-deduct inventory.
+  1033→- Failed synchronisation is visible to the user.
+  1034→- Local transactions survive normal browser closure and restart.
+  1035→
+  1036→Also write integration tests and end-to-end tests for realistic workflows, not only isolated functions.
+  1037→
+  1038→## 15. RELEASE ACCEPTANCE CRITERIA
+  1039→
+  1040→The application is not ready for paying customers until the following are true:
+  1041→
+  1042→1. A business can register and complete onboarding.
+  1043→2. The platform can collect and verify the initial deployment and annual subscription payments in test mode.
+  1044→3. An authorised administrator can confirm and configure the deployment.
+  1045→4. The owner can manage pharmacy and supermarket products.
+  1046→5. Authorised staff can process a combined sale through one POS.
+  1047→6. Purchases, sales, stock movements, payments, and refunds reconcile correctly.
+  1048→7. Medicine batches and expiry controls work as specified.
+  1049→8. Business reports use real validated database records.
+  1050→9. AI summaries can explain supported figures without inventing missing facts.
+  1051→10. Forecasts identify assumptions, limitations, and uncertainty.
+  1052→11. Tenant isolation and role permissions pass automated security tests.
+  1053→12. Supported offline sales survive disconnection and synchronise without duplicate transactions.
+  1054→13. Database migrations can be applied reproducibly.
+  1055→14. Backup and recovery procedures have been tested.
+  1056→15. Required lint, type-check, test, and production-build commands pass.
+  1057→16. Setup, deployment, troubleshooting, and environment configuration are documented.
+  1058→
+  1059→A successful production build alone does not prove that any of these business requirements work.
+  1060→
+  1061→## 16. DEVELOPMENT ORDER
+  1062→
+  1063→Work through the following checkpoints in order.
+  1064→
+  1065→### Checkpoint 0: Repository audit and architecture
+  1066→
+  1067→Inspect the workspace and report:
+  1068→
+  1069→- Existing application structure.
+  1070→- Existing dependencies and tooling.
+  1071→- Current database configuration.
+  1072→- Existing authentication and payment integrations.
+  1073→- Detected defects and missing configuration.
+  1074→- Proposed architecture.
+  1075→- Security risks.
+  1076→- Database model plan.
+  1077→- Build sequence.
+  1078→- Testing strategy.
+  1079→- Git repository status and connection to the specified SynkiSell repository.
+  1080→- Supabase database connectivity and any required environment configuration.
+  1081→
+  1082→Create or update the project documentation files, including:
+  1083→
+  1084→- AGENTS.md.
+  1085→- README.md.
+  1086→- docs/PRODUCT_REQUIREMENTS.md.
+  1087→- docs/ARCHITECTURE.md.
+  1088→- docs/DATABASE_DESIGN.md.
+  1089→- docs/SECURITY.md.
+  1090→- docs/IMPLEMENTATION_PLAN.md.
+  1091→- docs/TESTING.md.
+  1092→
+  1093→Do not replace an existing useful project simply to make it match a preferred template.
+  1094→
+  1095→### Checkpoint 1: Secure foundation
+  1096→
+  1097→Implement the application shell, database migrations, tenant model, authentication, staff membership, role permissions, and tenant isolation tests.
+  1098→
+  1099→Do not continue into sensitive operational modules until the data security foundation has passed its initial tests.
+  1100→
+  1101→### Checkpoint 2: Inventory and purchasing
+  1102→
+  1103→Implement product catalogues, supplier records, pharmacy batch tracking, supermarket stock, stock movements, purchasing, and goods receiving.
+  1104→
+  1105→Test unit conversion, costing, and stock reconciliation.
+  1106→
+  1107→### Checkpoint 3: POS and financial operations
+  1108→
+  1109→Implement unified checkout, sale transactions, payments, receipts, returns, expenses, shift reconciliation, and operational reports.
+  1110→
+  1111→Validate financial calculations and transaction integrity.
+  1112→
+  1113→### Checkpoint 4: SaaS commercial operations
+  1114→
+  1115→Implement deployment billing, annual subscription plans, Paystack integration, payment verification, invoices, reminders, renewal processing, grace periods, and administrative subscription management.
+  1116→
+  1117→### Checkpoint 5: Offline operation and reliability
+  1118→
+  1119→Implement the supported local transaction queue, synchronisation, retry safety, printing, backup procedures, and recovery tests.
+  1120→
+  1121→Do not declare offline operation complete without exercising the application under actual network interruption.
+  1122→
+  1123→### Checkpoint 6: AI business intelligence
+  1124→
+  1125→Implement validated business data aggregations, AI-generated summaries, authorised natural-language reporting, forecasting, uncertainty indicators, and usage controls.
+  1126→
+  1127→Use seeded development data for demonstrations. Never use another customer's private business records as test data.
+  1128→
+  1129→### Checkpoint 7: Release readiness
+  1130→
+  1131→Run the full test suite, inspect security boundaries, resolve critical defects, review the deployment process, document outstanding risks, and prepare a reproducible staging deployment.
+  1132→
+  1133→Only then prepare production release instructions.
+  1134→
+  1135→## 17. WORKING METHOD
+  1136→
+  1137→Use a disciplined, iterative development process.
+  1138→
+  1139→At the start of each checkpoint:
+  1140→
+  1141→1. Review the existing requirements and current project state.
+  1142→2. Identify the files, schema changes, dependencies, and tests needed.
+  1143→3. Implement the smallest coherent set of functionality.
+  1144→4. Run the relevant checks.
+  1145→5. Fix failures before moving to dependent modules.
+  1146→6. Update the documentation.
+  1147→7. Record completed work and remaining limitations.
+  1148→8. Commit tested, coherent milestones to the specified GitHub repository when GitHub access is available.
+  1149→9. Verify the result of each commit and push operation. Never claim a successful push without confirmation.
+  1150→
+  1151→Maintain a visible implementation checklist in the repository.
+  1152→
+  1153→Use Git branches or commits at sensible milestones when the environment supports them.
+  1154→
+  1155→If a migration, architectural change, or security decision could destroy data or weaken isolation, stop that particular operation and explain the risk instead of proceeding blindly.
+  1156→
+  1157→Do not repeatedly regenerate the entire application. Preserve stable working modules and extend them deliberately.
+  1158→
+  1159→Do not ask the user to configure optional integrations before they are needed. Use mock providers and test credentials for local development where appropriate, without falsely representing mock operations as real transactions.
+  1160→
+  1161→Never commit environment files containing actual secrets. Before pushing, check the Git status and staged changes for credentials, private database URLs, API keys, and other sensitive information. Do not use force-push to bypass conflicts or repository protections.
+  1162→
+  1163→## 18. FINAL INSTRUCTION
+  1164→
+  1165→Begin with Checkpoint 0.
+  1166→
+  1167→Inspect the project workspace, identify the existing technology and repository state, and create the architecture and requirements documents.
+  1168→
+  1169→Verify the Supabase connection using the supplied connection template after the actual database password has been configured securely. Confirm that the GitHub repository is accessible before attempting to push code.
+  1170→
+  1171→Then implement the secure foundation in Checkpoint 1 and continue through the remaining checkpoints in order, validating each one.
+  1172→
+  1173→Do not attempt to implement all modules in one generation.
+  1174→
+  1175→Do not stop at a static prototype or a long planning document when the workspace supports actual implementation.
+  1176→
+  1177→Do not claim production readiness until the specified tests have passed and the required external services have been configured and verified.
+  1178→
+  1179→Do not claim that the project has been pushed to GitHub unless the push has actually succeeded.
+  1180→
+  1181→The objective is SynkiSell, a maintainable, secure, commercially usable pharmacy-supermarket SaaS that Nigerian business owners can trust with their daily operations, not merely a visually impressive dashboard.
