@@ -25,8 +25,8 @@ export function qty(value: Dec | Prisma.Decimal.Value): Dec {
 }
 
 /** Format NGN for display: ₦12,345.50 */
-export function formatNaira(value: Dec | Prisma.Decimal.Value | number | string): string {
-  const n = dec(value).toDecimalPlaces(2, D.ROUND_HALF_UP);
+export function formatNaira(value: Dec | Prisma.Decimal.Value | number | string | { toString(): string }): string {
+  const n = new D(String(value)).toDecimalPlaces(2, D.ROUND_HALF_UP);
   const sign = n.isNegative() ? "-" : "";
   const [intPart, decPart] = n.abs().toFixed(2).split(".");
   const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -34,8 +34,8 @@ export function formatNaira(value: Dec | Prisma.Decimal.Value | number | string)
 }
 
 /** Format quantity for display (trim trailing zeros). */
-export function formatQty(value: Dec | Prisma.Decimal.Value | number | string): string {
-  const q = dec(value).toDecimalPlaces(4, D.ROUND_HALF_UP);
+export function formatQty(value: Dec | Prisma.Decimal.Value | number | string | { toString(): string }): string {
+  const q = new D(String(value)).toDecimalPlaces(4, D.ROUND_HALF_UP);
   return q.toFixed(4).replace(/\.?0+$/, "") || "0";
 }
 
@@ -58,4 +58,25 @@ export function computeLine(input: {
 /** Sum a list of decimals safely. */
 export function sum(values: (Dec | Prisma.Decimal.Value | null | undefined)[]): Dec {
   return values.reduce<Dec>((acc, v) => acc.add(dec(v)), ZERO);
+}
+
+/**
+ * Deep-convert Prisma Decimal instances to plain strings so results can
+ * cross the server→client boundary (Next.js forbids non-plain objects).
+ * Dates pass through natively; everything else is walked recursively.
+ */
+export function toPlain<T>(value: T): T {
+  if (value === null || value === undefined) return value;
+  const v = value as unknown;
+  if (typeof v === "object") {
+    if (Prisma.Decimal.isDecimal(v)) return v.toString() as unknown as T;
+    if (v instanceof Date) return value;
+    if (Array.isArray(v)) return v.map((item) => toPlain(item)) as unknown as T;
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      out[k] = toPlain(val);
+    }
+    return out as T;
+  }
+  return value;
 }

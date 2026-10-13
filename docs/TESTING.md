@@ -64,7 +64,19 @@ bun run lint          # static checks
 
 | Date | Suite | Result | Notes |
 |---|---|---|---|
-| — | — | — | populate as checkpoints complete |
+| 2026-10-13 | `bun run test:rules` | **44/44 PASS** | isolation, permissions, money, conversion, FEFO, idempotency, voids, refunds, receiving, reconciliation, shifts, data boundaries |
+| 2026-10-13 | `bun run lint` | PASS | 0 errors, 0 warnings |
+| 2026-10-13 | `tsc --noEmit` | PASS | strict, excluding sandbox skill/example folders |
+| 2026-10-13 | Browser E2E (agent-browser) | PASS | login per role; owner dashboard w/ live data; POS sale (mixed basket, ₦5,000 tender → ₦1,000 change, receipt SLS-000162); inventory batches/expiry; reports w/ disclosures; AI weekly summary (grounded figures); AI Q&A (expiringStock+lowStock tools); forecast (EXPONENTIAL_SMOOTHING + uncertainty); billing mock mode; admin console (invoice issue → manual verify → subscription extended 12 months); cashier RBAC nav; offline drill (queue → sync exactly once → balances reconciled) |
+
+### Offline drill detail (Checkpoint 5)
+- Browser network emulated offline; catalogue served from IndexedDB snapshot
+  with explicit "may be out of date" disclosure.
+- Cash sale (₦1,500) completed → stored locally, labelled "Not yet in the
+  cloud"; no fake success state.
+- Network restored → auto-sync on reconnect → exactly ONE OFFLINE_SYNC sale
+  (SLS-000163) with server-confirmed timestamp; product balance vs movement
+  ledger reconciled (531 = 531).
 
 ## Sandbox limitations (honest)
 

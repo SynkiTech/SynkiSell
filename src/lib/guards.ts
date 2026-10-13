@@ -2,6 +2,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { permissionsForRole, type Permission, type Role } from "@/lib/permissions";
+import { toPlain } from "@/lib/money";
+
+export type { Permission, Role } from "@/lib/permissions";
 
 /**
  * Server-side authorisation context.
@@ -102,10 +105,12 @@ export async function requirePlatformAdmin(): Promise<PlatformContext> {
 /**
  * Wrap a server action with uniform error handling: AuthError codes pass
  * through (UI shows the message); unexpected errors are logged safely.
+ * Results are deep-serialized (Decimal → string) for the client boundary.
  */
 export async function guarded<T>(fn: () => Promise<T>): Promise<T> {
   try {
-    return await fn();
+    const result = await fn();
+    return toPlain(result);
   } catch (err) {
     if (err instanceof AuthError) throw err;
     console.error("[guarded-action]", err instanceof Error ? err.message : err);

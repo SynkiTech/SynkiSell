@@ -362,6 +362,7 @@ model Product {
   movements       StockMovement[]
   saleItems       SaleItem[]
   poLines         PurchaseOrderLine[]
+  goodsReceiptLines GoodsReceiptLine[]
   refundLines     RefundLine[]
   forecasts       Forecast[]
   adjustments     StockAdjustment[]
@@ -508,6 +509,7 @@ model GoodsReceiptLine {
   expiryDate  DateTime? // required for MEDICINE
 
   receipt GoodsReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  product Product      @relation(fields: [productId], references: [id])
 
   @@index([receiptId])
 }

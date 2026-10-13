@@ -24,7 +24,7 @@ function mulberry32(seed: number) {
 }
 const rand = mulberry32(20261013);
 const pick = <T,>(arr: T[]): T => arr[Math.floor(rand() * arr.length)];
-const d = (n: number) => new Prisma.Decimal(n);
+const d = (n: Prisma.Decimal.Value) => new Prisma.Decimal(n);
 
 async function main() {
   console.log("Seeding SynkiSell…");
@@ -418,7 +418,11 @@ async function main() {
         payments.push({ method: "TRANSFER", amount: total.minus(cashPart), reference: `TRF-${Date.now()}-${s}` });
       }
 
-      const createdAt = new Date(day.getTime() + (9 + s) * 36e5);
+      // Keep today's sales in the past: spread 09:00→12:40 for day 0,
+      // otherwise spread through the day (9:00 → 19:40)
+      const hourOffset = dayOffset === 0 ? Math.floor(s * 0.5) : s;
+      const minuteOffset = dayOffset === 0 ? (s % 2) * 40 : (s * 17) % 60;
+      const createdAt = new Date(day.getTime() + hourOffset * 36e5 + minuteOffset * 6e4);
       saleCounter++;
       try {
         await db.$transaction(async (tx) =>
