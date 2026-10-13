@@ -64,3 +64,25 @@ Work Log:
 
 Stage Summary:
 - All checkpoints delivered. Integration boundaries documented: Supabase PostgreSQL (schema migration-ready, RLS runbook in docs/SECURITY.md), Paystack (mock mode until keys), GitHub push (blocked without credentials — local commits at every checkpoint).
+
+---
+Task ID: direct (credentials wiring session)
+Agent: Super Z (main)
+Task: Wire user-provided Supabase/Paystack/GitHub credentials into SynkiSell
+
+Work Log:
+- Switched prisma/schema.prisma datasource sqlite -> postgresql; pushed schema to Supabase (43.9s)
+- Created protected .env.supabase (Supabase URL + NEXTAUTH_SECRET); /start.sh clobbers .env on every boot, so patched .zscripts/dev.sh to source it before db:push/dev start
+- Raised Prisma interactive-transaction limits (maxWait 20s / timeout 120s) in src/lib/db.ts + standalone scripts for WAN latency
+- Rewrote seed sales loop: deterministic sequential random draws -> plan, then CONCURRENCY=5 execution; --force wipe pre-deletes sale/goodsReceipt/purchaseOrder (history tables use intentional Restrict FKs)
+- Fixed REAL production bug in src/lib/serial.ts: read-max-then-increment number allocation raced under concurrent checkouts (P2002 on businessId+number). Replaced with atomic per-(business,prefix) Postgres SEQUENCE; first-use self-heal via SAVEPOINT (42P01 -> rollback-to-savepoint -> in-tx CREATE SEQUENCE above max -> retry nextval); regclass lowercase naming; legacy fallback for non-PG doubles
+- Diagnosed + fixed test-business-rules cleanup order (RefundLine->saleItem Restrict): refunds before sales
+- Restart-proofing: container reaps tool-spawned processes; dev server must come from boot path (dev.sh). In-call boot verified: home 200, api 200, 0 errors
+
+Stage Summary:
+- Supabase Postgres is now the app database: 158 sales / 30 days, 22 products, 7 users, invoices, expenses, subscription
+- Test suites: business rules 44/44 pass, exit 0
+- Demo logins seeded (admin@synkisell.com / SynkiAdmin#2026, owner@firstpharmplus.ng / Owner#2026, manager/cashier/store/pharmacist/accounts @firstpharmplus.ng)
+- Paystack: user gave a hosted payment LINK, not API keys - app stays in MOCK_TEST_MODE until PAYSTACK_SECRET_KEY (sk_test_...) provided
+- GitHub: password auth not usable for git (needs PAT)
+- SECURITY: credentials were shared in chat; DB password == GitHub password; recommend rotation

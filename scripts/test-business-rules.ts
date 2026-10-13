@@ -13,7 +13,9 @@ import { permissionsForRole } from "../src/lib/permissions";
 import { hashPassword, verifyPassword } from "../src/lib/password";
 import { dec, computeLine, formatNaira } from "../src/lib/money";
 
-const db = new PrismaClient();
+const db = new PrismaClient({
+  transactionOptions: { maxWait: 20_000, timeout: 120_000 },
+});
 
 let passed = 0;
 let failed = 0;
@@ -345,10 +347,12 @@ async function main() {
   }
   console.log("═══════════════════════════════════════════════════════\n");
 
-  // Cleanup test artifacts (test sales/shift/refund), keep probe B for future runs
-  await db.sale.deleteMany({ where: { idempotencyKey: { startsWith: "test-" } } });
+  // Cleanup test artifacts (test sales/shift/refund), keep probe B for future runs.
+  // Order matters: refunds first (cascades RefundLine), then sales — RefundLine
+  // intentionally references saleItem with Restrict (history protection).
+  await db.refund.deleteMany({ where: { sale: { idempotencyKey: { startsWith: "test-" } } } }).catch(() => {});
+  await db.sale.deleteMany({ where: { idempotencyKey: { startsWith: "test-" } } }).catch(() => {});
   await db.cashierShift.delete({ where: { id: shift.id } }).catch(() => {});
-  await db.refund.deleteMany({ where: { number: { startsWith: "RFD-TEST-" } } });
 
   process.exit(failed > 0 ? 1 : 0);
 }

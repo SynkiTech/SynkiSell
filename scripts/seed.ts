@@ -11,7 +11,11 @@ import { hashPassword } from "../src/lib/password";
 import { receiveGoodsCore } from "../src/server/inventory/goods-receipt-service";
 import { createSaleCore } from "../src/server/sales/sale-service";
 
-const db = new PrismaClient();
+const db = new PrismaClient({
+  // Supabase is a WAN database: the 5s default interactive-transaction timeout
+  // is too tight for the seeded multi-step inventory/sales flows.
+  transactionOptions: { maxWait: 20_000, timeout: 120_000 },
+});
 
 // Deterministic PRNG (mulberry32) for reproducible seeds
 function mulberry32(seed: number) {
@@ -84,6 +88,12 @@ async function main() {
     return;
   }
   if (existing) {
+    // History tables must go first: SaleLine / GoodsReceiptLine / PurchaseOrderLine
+    // intentionally reference products with Restrict (history protection), which
+    // would otherwise block the business→product cascade delete.
+    await db.sale.deleteMany({ where: { businessId: existing.id } });
+    await db.goodsReceipt.deleteMany({ where: { businessId: existing.id } });
+    await db.purchaseOrder.deleteMany({ where: { businessId: existing.id } });
     await db.business.delete({ where: { id: existing.id } });
     console.log("Removed previous demo business (--force).");
   }
@@ -357,29 +367,29 @@ async function main() {
   }
 
   // ── 30 days of sales history ────────────────────────────────────
+  // Plan all random draws sequentially (deterministic), then execute each
+  // day's sales with a small concurrency pool — seeding over a WAN database
+  // would otherwise take 15+ minutes of pure round-trip latency.
   const medicines = productIds.filter(({ p }) => p.type === "MEDICINE" && !p.batches!.every(([, , q]) => q <= 0));
   const retail = productIds.filter(({ p }) => p.type === "RETAIL");
+  const allProducts = await db.product.findMany({ where: { businessId: business.id }, select: { id: true, sellingPrice: true } });
+  const priceOf = new Map(allProducts.map((p) => [p.id, d(p.sellingPrice)]));
   let saleCounter = 0;
+
+  type SalePlan = {
+    lines: { productId: string; quantity: Prisma.Decimal.Value; soldUnit: string }[];
+    payments: { method: "CASH" | "TRANSFER" | "CARD"; amount: Prisma.Decimal.Value; reference?: string }[];
+    createdAt: Date;
+    idempotencyKey: string;
+  };
+  const dayPlans: { day: Date; dayOffset: number; sales: SalePlan[]; discrepancy: Prisma.Decimal }[] = [];
 
   for (let dayOffset = 29; dayOffset >= 0; dayOffset--) {
     const day = new Date(Date.now() - dayOffset * 864e5);
     day.setHours(9, 0, 0, 0);
     const isSunday = day.getDay() === 0;
     const salesCount = isSunday ? 2 + Math.floor(rand() * 2) : 4 + Math.floor(rand() * 5);
-
-    // Open a shift for the day, close it at end of day's seeding
-    const shift = await db.cashierShift.create({
-      data: {
-        businessId: business.id,
-        userId: cashier.id,
-        status: dayOffset === 0 ? "OPEN" : "CLOSED",
-        openedAt: day,
-        openingCash: d(5000),
-      },
-    });
-    await db.cashMovement.create({
-      data: { businessId: business.id, shiftId: shift.id, type: "OPENING", amount: d(5000), userId: cashier.id, reason: "Opening float" },
-    });
+    const sales: SalePlan[] = [];
 
     for (let s = 0; s < salesCount; s++) {
       const itemCount = 1 + Math.floor(rand() * 4);
@@ -397,25 +407,20 @@ async function main() {
 
       const roll = rand();
       const payments: { method: "CASH" | "TRANSFER" | "CARD"; amount: Prisma.Decimal.Value; reference?: string }[] = [];
-      // Amount computed by the service; to avoid underpayment we pay generously in cash.
-      // Pre-compute total from DB prices:
-      const dbProducts = await db.product.findMany({ where: { id: { in: lines.map((l) => l.productId) } } });
-      const total = lines.reduce((acc, l) => {
-        const prod = dbProducts.find((x) => x.id === l.productId)!;
-        return acc.add(d(prod.sellingPrice).mul(d(l.quantity)));
-      }, new Prisma.Decimal(0));
+      // Amount computed from seeded DB prices; cash paid generously to avoid underpayment.
+      const total = lines.reduce((acc, l) => acc.add(priceOf.get(l.productId)!.mul(d(l.quantity))), new Prisma.Decimal(0));
 
       if (roll < 0.62) {
         payments.push({ method: "CASH", amount: total.add(Math.floor(rand() * 3) * 50) });
       } else if (roll < 0.85) {
-        payments.push({ method: "TRANSFER", amount: total, reference: `TRF-${Date.now()}-${s}` });
+        payments.push({ method: "TRANSFER", amount: total, reference: `TRF-d${dayOffset}-s${s}` });
       } else if (roll < 0.95) {
-        payments.push({ method: "CARD", amount: total, reference: `POS-${Date.now()}-${s}` });
+        payments.push({ method: "CARD", amount: total, reference: `POS-d${dayOffset}-s${s}` });
       } else {
         // split tender
         const cashPart = total.mul(0.4).toDecimalPlaces(0);
         payments.push({ method: "CASH", amount: cashPart });
-        payments.push({ method: "TRANSFER", amount: total.minus(cashPart), reference: `TRF-${Date.now()}-${s}` });
+        payments.push({ method: "TRANSFER", amount: total.minus(cashPart), reference: `TRF-d${dayOffset}-s${s}` });
       }
 
       // Keep today's sales in the past: spread 09:00→12:40 for day 0,
@@ -424,44 +429,91 @@ async function main() {
       const minuteOffset = dayOffset === 0 ? (s % 2) * 40 : (s * 17) % 60;
       const createdAt = new Date(day.getTime() + hourOffset * 36e5 + minuteOffset * 6e4);
       saleCounter++;
-      try {
-        await db.$transaction(async (tx) =>
-          createSaleCore(tx, {
-            businessId: business.id,
-            cashierId: cashier.id,
-            shiftId: shift.id,
-            lines,
-            payments,
-            idempotencyKey: `seed-sale-${saleCounter}-${business.id.slice(-6)}`,
-            channel: "ONLINE",
-            clientCreatedAt: createdAt,
-          })
-        );
-        // Backdate the sale to its day
-        const lastSale = await db.sale.findFirst({ where: { businessId: business.id }, orderBy: { number: "desc" } });
-        if (lastSale) {
-          await db.sale.update({ where: { id: lastSale.id }, data: { createdAt, clientCreatedAt: createdAt } });
-        }
-      } catch (err) {
-        // Stock exhausted for a picked item — skip that sale in seed history
-        console.warn(`  skip sale (${(err as Error).message.slice(0, 60)})`);
-      }
+      sales.push({
+        lines,
+        payments,
+        createdAt,
+        idempotencyKey: `seed-sale-${saleCounter}-${business.id.slice(-6)}`,
+      });
     }
 
-    if (dayOffset > 0) {
+    const discrepancy = rand() < 0.12 ? d(rand() < 0.5 ? -50 : 50) : d(0);
+    dayPlans.push({ day, dayOffset, sales, discrepancy });
+  }
+
+  // Execute: shift open/close sequential per day, sales in parallel batches.
+  for (const dp of dayPlans) {
+    const shift = await db.cashierShift.create({
+      data: {
+        businessId: business.id,
+        userId: cashier.id,
+        status: dp.dayOffset === 0 ? "OPEN" : "CLOSED",
+        openedAt: dp.day,
+        openingCash: d(5000),
+      },
+    });
+    await db.cashMovement.create({
+      data: { businessId: business.id, shiftId: shift.id, type: "OPENING", amount: d(5000), userId: cashier.id, reason: "Opening float" },
+    });
+
+    const CONCURRENCY = 5;
+    for (let i = 0; i < dp.sales.length; i += CONCURRENCY) {
+      const chunk = dp.sales.slice(i, i + CONCURRENCY);
+      await Promise.all(
+        chunk.map(async (plan) => {
+          // Retry: parallel sales race on nextDocNumber (read-max-then-increment).
+          // A loser fails with a unique violation; by retry time the winner has
+          // committed, so the re-read advances and the retry succeeds. Real stock
+          // errors (INSUFFICIENT_STOCK etc.) also land here — capped attempts
+          // keep those as skips without looping forever.
+          for (let attempt = 1; attempt <= 5; attempt++) {
+            try {
+              await db.$transaction(async (tx) => {
+                const res = await createSaleCore(tx, {
+                  businessId: business.id,
+                  cashierId: cashier.id,
+                  shiftId: shift.id,
+                  lines: plan.lines,
+                  payments: plan.payments,
+                  idempotencyKey: plan.idempotencyKey,
+                  channel: "ONLINE",
+                  clientCreatedAt: plan.createdAt,
+                });
+                // Backdate the sale to its day (same tx — no race on number lookup)
+                await tx.sale.update({ where: { id: res.saleId }, data: { createdAt: plan.createdAt, clientCreatedAt: plan.createdAt } });
+              });
+              return; // success
+            } catch (err) {
+              const msg = (err as Error).message.slice(0, 80);
+              if (attempt === 5) {
+                // Stock exhausted for a picked item (or persistent conflict) — skip
+                console.warn(`  skip sale [${plan.idempotencyKey}] (${msg})`);
+              } else if (!/Unique constraint|INSUFFICIENT_STOCK|Stock/i.test(msg)) {
+                // Non-retryable service error — skip immediately
+                console.warn(`  skip sale [${plan.idempotencyKey}] (${msg})`);
+                return;
+              }
+              // brief stagger before retry so competing writers diverge
+              await new Promise((r) => setTimeout(r, 50 * attempt + Math.floor(Math.random() * 40)));
+            }
+          }
+        })
+      );
+    }
+
+    if (dp.dayOffset > 0) {
       // Close the day's shift with reconciliation
       const cashAgg = await db.cashMovement.aggregate({ where: { shiftId: shift.id, type: { in: ["OPENING", "SALE", "REFUND", "DROP", "PAYOUT"] } }, _sum: { amount: true } });
       const expected = d(cashAgg._sum.amount ?? 0);
-      const discrepancy = rand() < 0.12 ? d(rand() < 0.5 ? -50 : 50) : d(0);
       const salesAgg = await db.sale.aggregate({ where: { shiftId: shift.id, status: "COMPLETED" }, _sum: { total: true }, _count: true });
       await db.cashierShift.update({
         where: { id: shift.id },
         data: {
           status: "CLOSED",
-          closedAt: new Date(day.getTime() + 20 * 36e5),
+          closedAt: new Date(dp.day.getTime() + 20 * 36e5),
           expectedCash: expected,
-          countedCash: expected.add(discrepancy),
-          discrepancy,
+          countedCash: expected.add(dp.discrepancy),
+          discrepancy: dp.discrepancy,
           totalsJson: JSON.stringify({ salesCount: salesAgg._count, salesTotal: (salesAgg._sum.total ?? 0).toString() }),
         },
       });
