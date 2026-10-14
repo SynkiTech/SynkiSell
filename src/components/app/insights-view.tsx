@@ -5,12 +5,10 @@ import { generateAiSummary, listAiSummaries, askBusinessQuestion, generateForeca
 import { listProducts } from "@/server/actions/catalog-actions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,6 +16,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useAppStore } from "@/store/app-store";
 import { Sparkles, MessageCircleQuestion, TrendingUp, Send, Info } from "lucide-react";
 import { useDataLoader } from "@/hooks/use-data-loader";
+import { GlassCard, PageHeader, EmptyState, Stagger, FadeIn } from "./ui/primitives";
+import { InlineLoading } from "./ui/loading";
+import { cn } from "@/lib/utils";
 
 type SummaryRow = { id: string; periodType: string; generatedAt: string; contentJson: string; model: string | null };
 type ForecastRow = {
@@ -106,14 +107,24 @@ export function InsightsView({ businessId }: { businessId: string }) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">AI Insights</h1>
-          <p className="text-sm text-slate-500">Every number is computed by validated queries first — the AI narrates, it never invents.</p>
-        </div>
-        {quota && <Badge variant="outline" className={quota.used >= quota.limit ? "border-red-300 text-red-600" : "border-teal-200 text-teal-700"}>AI usage: {quota.used}/{quota.limit} this month</Badge>}
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="AI Insights"
+        subtitle="Every number is computed by validated queries first — the AI narrates, it never invents."
+        actions={
+          quota && (
+            <Badge
+              variant="outline"
+              className={cn(
+                "tabular-nums",
+                quota.used >= quota.limit ? "border-destructive/40 text-destructive" : "border-primary/30 text-primary"
+              )}
+            >
+              AI usage: {quota.used}/{quota.limit} this month
+            </Badge>
+          )
+        }
+      />
 
       <Tabs defaultValue="summaries">
         <TabsList>
@@ -123,22 +134,36 @@ export function InsightsView({ businessId }: { businessId: string }) {
         </TabsList>
 
         <TabsContent value="summaries" className="mt-4 space-y-4">
-          <div className="flex gap-2">
+          <div className="no-print flex flex-wrap gap-2">
             {(["DAILY", "WEEKLY", "MONTHLY"] as const).map((p) => (
-              <Button key={p} size="sm" variant="outline" className="border-teal-200 text-teal-700" onClick={() => void handleGenerate(p)} disabled={generating !== null}>
+              <Button key={p} size="sm" variant="outline" onClick={() => void handleGenerate(p)} disabled={generating !== null}>
                 {generating === p ? "Generating…" : `Generate ${p.toLowerCase()}`}
               </Button>
             ))}
           </div>
 
+          {generating !== null && (
+            <GlassCard intensity="subtle" className="rounded-2xl">
+              <InlineLoading label="Generating from your records" className="py-8" />
+            </GlassCard>
+          )}
+
           {latest && (
-            <Card className="border-teal-200 bg-teal-50/40">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">{latest.periodType.charAt(0) + latest.periodType.slice(1).toLowerCase()} summary</CardTitle>
-                <CardDescription>{latest.modelUsed ? `AI: ${latest.modelUsed}` : "Deterministic fallback"} • {new Date().toLocaleString()}</CardDescription>
-              </CardHeader>
-              <CardContent className="text-sm leading-relaxed whitespace-pre-wrap">{latest.narrative}</CardContent>
-            </Card>
+            <FadeIn>
+              {/* AI panel — animated gradient border is reserved for AI surfaces */}
+              <div className="border-flow glass rounded-2xl" aria-label={`${latest.periodType.toLowerCase()} AI summary`}>
+                <div className="flex flex-wrap items-center gap-2.5 px-5 pt-4">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Sparkles className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="text-[0.95rem] font-semibold leading-tight">{latest.periodType.charAt(0) + latest.periodType.slice(1).toLowerCase()} summary</h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{latest.modelUsed ? `AI: ${latest.modelUsed}` : "Deterministic fallback"} • {new Date().toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="whitespace-pre-wrap px-5 pb-5 pt-3 text-sm leading-relaxed">{latest.narrative}</div>
+              </div>
+            </FadeIn>
           )}
 
           <div className="space-y-3">
@@ -146,41 +171,49 @@ export function InsightsView({ businessId }: { businessId: string }) {
               let narrative = "";
               try { narrative = JSON.parse(s.contentJson).narrative; } catch { narrative = "(unreadable summary)"; }
               return (
-                <Card key={s.id}>
-                  <CardHeader className="pb-1">
-                    <CardTitle className="text-sm">{s.periodType.charAt(0) + s.periodType.slice(1).toLowerCase()} • {new Date(s.generatedAt).toLocaleString()}</CardTitle>
-                    {s.model && <CardDescription className="text-xs">AI: {s.model}</CardDescription>}
-                  </CardHeader>
-                  <CardContent className="text-sm leading-relaxed">{narrative}</CardContent>
-                </Card>
+                <GlassCard key={s.id} className="p-4 sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold">{s.periodType.charAt(0) + s.periodType.slice(1).toLowerCase()} • {new Date(s.generatedAt).toLocaleString()}</h3>
+                    {s.model && <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">AI: {s.model}</Badge>}
+                  </div>
+                  <p className="mt-2 text-sm leading-relaxed">{narrative}</p>
+                </GlassCard>
               );
             })}
+            {!latest && !summaries.length && (
+              <EmptyState
+                icon={Sparkles}
+                title="No summaries yet"
+                hint="Generate a daily, weekly or monthly summary above — every insight is built strictly from your own records."
+              />
+            )}
           </div>
         </TabsContent>
 
         <TabsContent value="ask" className="mt-4 space-y-3">
-          <Card>
-            <CardContent className="p-4 space-y-3">
-              <div className="flex gap-2">
+          <FadeIn>
+            <GlassCard className="space-y-3 p-4 sm:p-5">
+              <div className="no-print flex gap-2">
                 <Input
+                  aria-label="Ask a question about your business"
                   placeholder='e.g. "Which products generated the highest gross profit last month?"'
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && question.length >= 5 && void handleAsk()}
                 />
-                <Button className="bg-teal-600 hover:bg-teal-700" onClick={() => void handleAsk()} disabled={asking || question.length < 5}><Send className="h-4 w-4" /></Button>
+                <Button aria-label="Ask" onClick={() => void handleAsk()} disabled={asking || question.length < 5}><Send className="h-4 w-4" /></Button>
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="no-print flex flex-wrap gap-1.5">
                 {["What is the value of stock expiring in the next 60 days?", "Which products need restocking?", "Compare pharmacy and supermarket sales this week.", "How did today's sales compare with yesterday?"].map((q) => (
-                  <button key={q} className="text-xs rounded-full border px-2.5 py-1 text-slate-500 hover:border-teal-400 hover:text-teal-700" onClick={() => setQuestion(q)}>{q}</button>
+                  <button key={q} className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary" onClick={() => setQuestion(q)}>{q}</button>
                 ))}
               </div>
-              {asking && <p className="text-sm text-slate-400 animate-pulse">Consulting your business data…</p>}
+              {asking && <p className="animate-pulse text-sm text-muted-foreground" role="status">Consulting your business data…</p>}
               {answer && (
-                <div className="rounded-lg border bg-slate-50 p-4 space-y-2">
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{answer.answer}</p>
+                <div className="border-flow glass space-y-2 rounded-xl p-4">
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{answer.answer}</p>
                   <div className="flex flex-wrap gap-1 pt-1">
-                    {answer.toolsUsed.map((t, i) => <Badge key={i} variant="outline" className="text-[10px] border-teal-200 text-teal-700">tool: {t.tool}</Badge>)}
+                    {answer.toolsUsed.map((t, i) => <Badge key={i} variant="outline" className="border-primary/30 text-[10px] text-primary">tool: {t.tool}</Badge>)}
                     {answer.modelUsed && <Badge variant="outline" className="text-[10px]">{answer.modelUsed}</Badge>}
                   </div>
                 </div>
@@ -191,78 +224,131 @@ export function InsightsView({ businessId }: { businessId: string }) {
                   Answers come from an authorised set of analytical tools — never raw SQL, never other businesses&apos; data. The AI cannot change stock, prices, refunds or permissions; it can only recommend.
                 </AlertDescription>
               </Alert>
-            </CardContent>
-          </Card>
+            </GlassCard>
+          </FadeIn>
         </TabsContent>
 
         <TabsContent value="forecast" className="mt-4 space-y-4">
-          <Card>
-            <CardContent className="p-4 grid gap-3 md:grid-cols-3 items-end">
-              <div className="space-y-1">
-                <Label>Product</Label>
-                <Select value={forecastProduct} onValueChange={setForecastProduct}>
-                  <SelectTrigger><SelectValue placeholder="Select product" /></SelectTrigger>
-                  <SelectContent>
-                    <ScrollArea className="max-h-60">{products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</ScrollArea>
-                  </SelectContent>
-                </Select>
+          <FadeIn>
+            <GlassCard className="no-print p-4 sm:p-5">
+              <div className="grid gap-3 md:grid-cols-3 md:items-end">
+                <div className="space-y-1.5">
+                  <Label htmlFor="fc-product">Product</Label>
+                  <Select value={forecastProduct} onValueChange={setForecastProduct}>
+                    <SelectTrigger id="fc-product"><SelectValue placeholder="Select product" /></SelectTrigger>
+                    <SelectContent>
+                      <ScrollArea className="max-h-60">{products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</ScrollArea>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="fc-horizon">Horizon (days)</Label>
+                  <Input id="fc-horizon" value={horizon} onChange={(e) => setHorizon(e.target.value)} inputMode="numeric" />
+                </div>
+                <Button onClick={() => void handleForecast()} disabled={!forecastProduct}><TrendingUp className="h-4 w-4 mr-1" /> Forecast demand</Button>
               </div>
-              <div className="space-y-1"><Label>Horizon (days)</Label><Input value={horizon} onChange={(e) => setHorizon(e.target.value)} inputMode="numeric" /></div>
-              <Button className="bg-teal-600 hover:bg-teal-700" onClick={() => void handleForecast()} disabled={!forecastProduct}><TrendingUp className="h-4 w-4 mr-1" /> Forecast demand</Button>
-            </CardContent>
-          </Card>
+            </GlassCard>
+          </FadeIn>
 
           {forecastResult && (
-            <Card className="border-teal-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">{forecastResult.productName} — {forecastResult.horizonDays ?? 14}-day outlook</CardTitle>
-                <CardDescription>
-                  Method: {forecastResult.method} {forecastResult.isPreliminary && <Badge variant="outline" className="ml-1 border-amber-300 text-amber-700">PRELIMINARY — insufficient history</Badge>}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-                  <div><p className="text-xs text-slate-500">Est. daily demand</p><p className="font-bold">{forecastResult.dailyDemand}</p></div>
-                  <div><p className="text-xs text-slate-500">Uncertainty band</p><p className="font-semibold">{forecastResult.lowBand} – {forecastResult.highBand}</p></div>
-                  <div><p className="text-xs text-slate-500">Available stock</p><p className="font-semibold">{forecastResult.availableStock}</p></div>
-                  <div><p className="text-xs text-slate-500">Incoming (open POs)</p><p className="font-semibold">{forecastResult.incomingQty}</p></div>
-                  <div><p className="text-xs text-slate-500">Suggested reorder</p><p className="font-bold text-teal-700">{forecastResult.suggestedReorderQty ?? "—"}</p></div>
+            <FadeIn>
+              <GlassCard className="overflow-hidden">
+                <div className="flex flex-wrap items-start justify-between gap-2 px-5 pt-4">
+                  <div>
+                    <h3 className="text-[0.95rem] font-semibold leading-tight">{forecastResult.productName} — {forecastResult.horizonDays ?? 14}-day outlook</h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">Method: {forecastResult.method}</p>
+                  </div>
+                  {forecastResult.isPreliminary && <Badge variant="outline" className="border-amber-300 text-amber-700">PRELIMINARY — insufficient history</Badge>}
                 </div>
-                {forecastResult.explanation && (
-                  <div className="rounded-lg bg-slate-50 border p-3 text-sm">{forecastResult.explanation}</div>
-                )}
-                <div>
-                  <p className="text-xs font-medium text-slate-500 mb-1">Assumptions & limitations</p>
-                  <ul className="text-xs text-slate-500 list-disc pl-4 space-y-0.5">
-                    {forecastResult.assumptions.map((a, i) => <li key={i}>{a}</li>)}
-                  </ul>
+                <div className="space-y-4 px-5 pb-5 pt-4">
+                  <section aria-label="Forecast for the selected horizon">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Forecast — next {forecastResult.horizonDays ?? 14} days</p>
+                    <Stagger className="mt-2 grid gap-3 sm:grid-cols-2">
+                      <div className="glass-subtle rounded-xl p-4">
+                        <p className="text-xs text-muted-foreground">Est. daily demand</p>
+                        <p className="mt-1 text-2xl font-bold tabular-nums">{forecastResult.dailyDemand}</p>
+                      </div>
+                      <div className="glass-subtle rounded-xl p-4">
+                        <p className="text-xs text-muted-foreground">Uncertainty band</p>
+                        <p className="mt-1 text-2xl font-semibold tabular-nums">{forecastResult.lowBand} – {forecastResult.highBand}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">low – high</p>
+                      </div>
+                    </Stagger>
+                  </section>
+                  <section aria-label="Current stock position">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">On hand now</p>
+                    <Stagger className="mt-2 grid gap-3 sm:grid-cols-2" delay={0.05}>
+                      <div className="glass-subtle rounded-xl p-4">
+                        <p className="text-xs text-muted-foreground">Available stock</p>
+                        <p className="mt-1 text-xl font-semibold tabular-nums">{forecastResult.availableStock}</p>
+                      </div>
+                      <div className="glass-subtle rounded-xl p-4">
+                        <p className="text-xs text-muted-foreground">Incoming (open POs)</p>
+                        <p className="mt-1 text-xl font-semibold tabular-nums">{forecastResult.incomingQty}</p>
+                      </div>
+                    </Stagger>
+                  </section>
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
+                    <span className="text-sm font-medium">Suggested reorder</span>
+                    <span className="text-xl font-bold tabular-nums text-primary">{forecastResult.suggestedReorderQty ?? "—"}</span>
+                  </div>
+                  {forecastResult.explanation && (
+                    <div className="glass-subtle rounded-xl p-4 text-sm">{forecastResult.explanation}</div>
+                  )}
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">Assumptions &amp; limitations</p>
+                    <ul className="list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
+                      {forecastResult.assumptions.map((a, i) => <li key={i}>{a}</li>)}
+                    </ul>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
+              </GlassCard>
+            </FadeIn>
           )}
 
-          <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-base">Latest forecasts per product</CardTitle></CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader><TableRow><TableHead>Product</TableHead><TableHead>Method</TableHead><TableHead className="text-right">Daily demand</TableHead><TableHead className="text-right">Band</TableHead><TableHead className="text-right">Stock</TableHead><TableHead className="text-right">Reorder?</TableHead><TableHead>When</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {forecasts.map((f) => (
-                    <TableRow key={f.id}>
-                      <TableCell className="font-medium">{f.product.name}</TableCell>
-                      <TableCell><Badge variant="outline" className={cnBadge(f)}>{f.method}</Badge></TableCell>
-                      <TableCell className="text-right">{Number(f.dailyDemand)}</TableCell>
-                      <TableCell className="text-right text-xs">{Number(f.lowBand)}–{Number(f.highBand)}</TableCell>
-                      <TableCell className="text-right">{Number(f.availableStock)}</TableCell>
-                      <TableCell className="text-right font-semibold text-teal-700">{f.suggestedReorderQty ? Number(f.suggestedReorderQty) : "—"}</TableCell>
-                      <TableCell className="text-xs text-slate-400">{new Date(f.generatedAt).toLocaleString()}</TableCell>
+          <FadeIn>
+            <GlassCard className="overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4">
+                <h3 className="text-[0.95rem] font-semibold leading-tight">Latest forecasts per product</h3>
+                {forecasts.length > 0 && <Badge variant="outline">{forecasts.length}</Badge>}
+              </div>
+              <div className="pb-4 pt-2">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Product</TableHead>
+                      <TableHead>Method</TableHead>
+                      <TableHead className="text-right">Daily demand</TableHead>
+                      <TableHead className="text-right">Band</TableHead>
+                      <TableHead className="text-right">Stock</TableHead>
+                      <TableHead className="text-right">Reorder?</TableHead>
+                      <TableHead>When</TableHead>
                     </TableRow>
-                  ))}
-                  {!forecasts.length && <TableRow><TableCell colSpan={7} className="text-center py-8 text-slate-400">No forecasts yet — generate one above.</TableCell></TableRow>}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {forecasts.map((f) => (
+                      <TableRow key={f.id}>
+                        <TableCell className="font-medium">{f.product.name}</TableCell>
+                        <TableCell><Badge variant="outline" className={cnBadge(f)}>{f.method}</Badge></TableCell>
+                        <TableCell className="text-right tabular-nums">{Number(f.dailyDemand)}</TableCell>
+                        <TableCell className="text-right text-xs tabular-nums">{Number(f.lowBand)}–{Number(f.highBand)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{Number(f.availableStock)}</TableCell>
+                        <TableCell className="text-right font-semibold tabular-nums text-[oklch(0.50_0.11_163)]">{f.suggestedReorderQty ? Number(f.suggestedReorderQty) : "—"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{new Date(f.generatedAt).toLocaleString()}</TableCell>
+                      </TableRow>
+                    ))}
+                    {!forecasts.length && (
+                      <TableRow>
+                        <TableCell colSpan={7}>
+                          <EmptyState icon={TrendingUp} title="No forecasts yet" hint="Generate one above." className="border-0" />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </GlassCard>
+          </FadeIn>
         </TabsContent>
       </Tabs>
     </div>
@@ -270,5 +356,5 @@ export function InsightsView({ businessId }: { businessId: string }) {
 }
 
 function cnBadge(f: ForecastRow) {
-  return f.isPreliminary ? "border-amber-300 text-amber-700" : "border-emerald-200 text-emerald-700";
+  return f.isPreliminary ? "border-amber-300 text-amber-700" : "border-[oklch(0.585_0.115_163/0.4)] text-[oklch(0.50_0.11_163)]";
 }

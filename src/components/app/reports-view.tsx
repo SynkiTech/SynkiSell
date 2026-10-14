@@ -3,7 +3,6 @@
 import { useCallback, useState } from "react";
 import { getReports, getInventoryReports, type ReportBundle, type InventoryReportBundle } from "@/server/queries/reports";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,10 +11,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { Download, Info, BarChart3 } from "lucide-react";
+import { Download, Info, Boxes, Hourglass, ShieldAlert, PackageX, ClipboardList } from "lucide-react";
 import { formatNaira } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { useDataLoader } from "@/hooks/use-data-loader";
+import { GlassCard, PageHeader, EmptyState, Stagger, FadeIn } from "./ui/primitives";
+import { InlineLoading } from "./ui/loading";
+import { KpiCard } from "./ui/kpi-card";
+import { ChartCard, RevenueAreaChart, ComparisonBarChart, DonutChart, SERIES } from "./ui/chart-kit";
 
 function defaultPeriod() {
   const to = new Date();
@@ -40,6 +43,17 @@ function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+/* Decimal-serialized server values → JS numbers for charting (never for display math). */
+const num = (v: unknown): number => Number(String(v ?? 0));
+
+const prettyDept = (d: string) => (d === "PHARMACY" ? "Pharmacy" : d === "SUPERMARKET" ? "Supermarket" : d);
+const deptColor = (name: string) => (name === "Pharmacy" ? SERIES.pharmacy : name === "Supermarket" ? SERIES.supermarket : SERIES.aux);
+
+/* Axis-safe display label — full product names remain in the tables beside each chart. */
+const shortLabel = (s: string) => (s.length > 13 ? `${s.slice(0, 12)}…` : s);
+
+const POSITIVE_TEXT = "text-[oklch(0.50_0.11_163)]";
 
 export function ReportsView({ businessId }: { businessId: string }) {
   const { toast } = useToast();
@@ -83,40 +97,69 @@ export function ReportsView({ businessId }: { businessId: string }) {
     toast({ title: "Exported CSV", description: "Permission-protected export (audit applies on server)" });
   }
 
-  const maxDaily = report ? Math.max(...report.series.map((s) => Number(s.total)), 1) : 1;
-
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Reports</h1>
-          <p className="text-sm text-slate-500">All figures from validated database records — no hard-coded numbers.</p>
-        </div>
-        <div className="flex items-end gap-2">
-          <div className="space-y-1"><Label>From</Label><Input type="date" value={period.from} onChange={(e) => setPeriod({ ...period, from: e.target.value })} /></div>
-          <div className="space-y-1"><Label>To</Label><Input type="date" value={period.to} onChange={(e) => setPeriod({ ...period, to: e.target.value })} /></div>
-          <Button className="bg-teal-600 hover:bg-teal-700" onClick={exportSales} disabled={!report}><Download className="h-4 w-4 mr-1" /> CSV</Button>
-        </div>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="Reports"
+        subtitle="All figures from validated database records — no hard-coded numbers."
+        actions={
+          <div className="no-print flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="period-from">From</Label>
+              <Input id="period-from" type="date" value={period.from} onChange={(e) => setPeriod({ ...period, from: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="period-to">To</Label>
+              <Input id="period-to" type="date" value={period.to} onChange={(e) => setPeriod({ ...period, to: e.target.value })} />
+            </div>
+            <Button onClick={exportSales} disabled={!report}><Download className="h-4 w-4 mr-1" /> CSV</Button>
+          </div>
+        }
+      />
 
       <Tabs defaultValue="financial">
         <TabsList>
           <TabsTrigger value="financial">Financial</TabsTrigger>
-          <TabsTrigger value="products">Products & cashiers</TabsTrigger>
+          <TabsTrigger value="products">Products &amp; cashiers</TabsTrigger>
           <TabsTrigger value="inventory">Inventory</TabsTrigger>
         </TabsList>
 
         <TabsContent value="financial" className="mt-4 space-y-4">
-          {report && (
+          {report ? (
             <>
-              <div className="grid gap-3 md:grid-cols-4">
-                <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Sales revenue</p><p className="text-xl font-bold">{formatNaira(report.sales.total)}</p><p className="text-xs text-slate-400">{report.sales.count} sale(s)</p></CardContent></Card>
-                <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Gross profit (est.)</p><p className="text-xl font-bold text-teal-700">{formatNaira(report.grossProfit)}</p><p className="text-xs text-slate-400">COGS {formatNaira(report.cogs)}</p></CardContent></Card>
-                <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Operating expenses</p><p className="text-xl font-bold">{formatNaira(report.expenses)}</p><p className="text-xs text-slate-400">approved only</p></CardContent></Card>
-                <Card className="border-teal-200 bg-teal-50/50"><CardContent className="p-4"><p className="text-xs text-slate-500">Net before tax (GP − expenses)</p><p className={cn("text-xl font-bold", String(report.netBeforeTax).startsWith("-") ? "text-red-600" : "text-teal-800")}>{formatNaira(report.netBeforeTax)}</p></CardContent></Card>
-              </div>
+              {/* Totals row — exact, un-rounded figures (formatNaira), tone-coloured by semantics */}
+              <FadeIn>
+                <GlassCard className="p-4 sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-[0.95rem] font-semibold leading-tight">Period totals</h3>
+                    <Badge variant="outline" className="tabular-nums">{report.period.from} → {report.period.to}</Badge>
+                  </div>
+                  <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 md:grid-cols-4 xl:grid-cols-7">
+                    {[
+                      { label: "Sales revenue", value: formatNaira(report.sales.total), sub: `${report.sales.count} sale(s)`, cls: "" },
+                      { label: "Refunds", value: formatNaira(report.refunds.total), sub: `${report.refunds.count} refund(s)`, cls: "text-amber-600" },
+                      { label: "Voids", value: formatNaira(report.voids.total), sub: `${report.voids.count} void(s)`, cls: "text-destructive" },
+                      { label: "COGS", value: formatNaira(report.cogs), sub: "recorded product cost", cls: "" },
+                      { label: "Gross profit (est.)", value: formatNaira(report.grossProfit), sub: undefined as string | undefined, cls: POSITIVE_TEXT },
+                      { label: "Operating expenses", value: formatNaira(report.expenses), sub: "approved only", cls: "" },
+                      {
+                        label: "Net before tax",
+                        value: formatNaira(report.netBeforeTax),
+                        sub: "GP − expenses",
+                        cls: String(report.netBeforeTax).startsWith("-") ? "text-destructive" : POSITIVE_TEXT,
+                      },
+                    ].map((t) => (
+                      <div key={t.label}>
+                        <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.label}</dt>
+                        <dd className={cn("mt-1 text-sm font-semibold tabular-nums", t.cls)}>{t.value}</dd>
+                        {t.sub ? <dd className="mt-0.5 text-xs text-muted-foreground">{t.sub}</dd> : null}
+                      </div>
+                    ))}
+                  </dl>
+                </GlassCard>
+              </FadeIn>
 
-              <Alert>
+              <Alert className="glass">
                 <Info className="h-4 w-4" />
                 <AlertTitle>What this report includes</AlertTitle>
                 <AlertDescription>
@@ -124,158 +167,346 @@ export function ReportsView({ businessId }: { businessId: string }) {
                 </AlertDescription>
               </Alert>
 
-              <Card>
-                <CardHeader><CardTitle className="text-base">Daily sales</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="flex items-end gap-0.5 h-28">
-                    {report.series.map((s) => (
-                      <div key={s.day} className="flex-1 group relative" title={`${s.day}: ₦${Number(s.total).toLocaleString()} (${s.count} sales)`}>
-                        <div className="w-full rounded-t bg-teal-500/80 group-hover:bg-teal-600" style={{ height: `${Math.max(2, (Number(s.total) / maxDaily) * 100)}px` }} />
-                      </div>
-                    ))}
-                    {!report.series.length && <p className="text-sm text-slate-400 py-6 mx-auto">No sales in this period.</p>}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardHeader><CardTitle className="text-base">By department</CardTitle></CardHeader>
-                  <CardContent>
-                    {report.byDept.map((d) => (
-                      <div key={d.department} className="flex justify-between py-1.5 border-b last:border-0 text-sm">
-                        <span>{d.department}</span><span className="font-semibold">{String(d.revenue)}</span>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader><CardTitle className="text-base">Payment methods</CardTitle></CardHeader>
-                  <CardContent>
-                    {Object.entries(report.paymentMix).map(([m, v]) => (
-                      <div key={m} className="flex justify-between py-1.5 border-b last:border-0 text-sm">
-                        <span>{m}</span><span className="font-semibold">{String(v)}</span>
-                      </div>
-                    ))}
-                    {!Object.keys(report.paymentMix).length && <p className="text-sm text-slate-400">No payments in period.</p>}
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader><CardTitle className="text-base">By cashier</CardTitle></CardHeader>
-                  <CardContent>
-                    {report.byCashier.map((c) => (
-                      <div key={c.name} className="flex justify-between py-1.5 border-b last:border-0 text-sm">
-                        <span>{c.name} <span className="text-xs text-slate-400">({c.count})</span></span><span className="font-semibold">{String(c.total)}</span>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader><CardTitle className="text-base">Refunds & voids</CardTitle></CardHeader>
-                  <CardContent className="text-sm space-y-1">
-                    <div className="flex justify-between"><span>Refunds</span><span className="font-semibold text-amber-700">{String(report.refunds.total)} ({report.refunds.count})</span></div>
-                    <div className="flex justify-between"><span>Voids</span><span className="font-semibold text-red-600">{String(report.voids.total)} ({report.voids.count})</span></div>
-                    <div className="flex justify-between"><span>Discounts given</span><span className="font-semibold">{String(report.sales.discounts)}</span></div>
-                  </CardContent>
-                </Card>
+              <div className="grid gap-4 lg:grid-cols-3">
+                <Stagger className="lg:col-span-2" delay={0.05}>
+                  <ChartCard
+                    title="Daily sales"
+                    description={`Completed sales per day — ${report.period.from} → ${report.period.to}`}
+                    empty={!report.series.length}
+                    emptyHint="No sales in this period."
+                    height={300}
+                  >
+                    <RevenueAreaChart
+                      data={report.series.map((s) => ({ label: s.day.slice(5), revenue: Number(s.total) }))}
+                      series={[{ key: "revenue", name: "Daily sales", color: SERIES.pharmacy }]}
+                    />
+                  </ChartCard>
+                </Stagger>
+                <Stagger delay={0.1}>
+                  <ChartCard
+                    title="Payment methods"
+                    description="Tender mix for the period"
+                    empty={!Object.keys(report.paymentMix).length}
+                    emptyHint="No payments in period."
+                    height={300}
+                  >
+                    <DonutChart data={Object.entries(report.paymentMix).map(([m, v]) => ({ name: m, value: num(v) }))} />
+                  </ChartCard>
+                </Stagger>
               </div>
+
+              <div className="grid gap-4 lg:grid-cols-3">
+                <Stagger className="lg:col-span-2" delay={0.05}>
+                  <ChartCard
+                    title="By department"
+                    description="Revenue by department, completed sales"
+                    empty={!report.byDept.length}
+                    height={280}
+                  >
+                    <ComparisonBarChart
+                      data={report.byDept.map((d) => ({ name: prettyDept(d.department), revenue: num(d.revenue) }))}
+                      bars={[{ key: "revenue", name: "Revenue" }]}
+                      colorMap={(entry) => deptColor(String(entry.name))}
+                    />
+                  </ChartCard>
+                </Stagger>
+                <Stagger delay={0.1}>
+                  <GlassCard className="flex h-full flex-col p-5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h3 className="text-[0.95rem] font-semibold leading-tight">Refunds &amp; voids</h3>
+                        <p className="mt-0.5 text-xs text-muted-foreground">Exception totals for the period</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex-1 space-y-3 text-sm">
+                      <div className="flex items-center justify-between gap-3 border-b pb-2.5">
+                        <span className="text-muted-foreground">Refunds</span>
+                        <span className="text-right">
+                          <span className="block font-semibold tabular-nums text-amber-600">{formatNaira(report.refunds.total)}</span>
+                          <span className="block text-xs text-muted-foreground">{report.refunds.count} refund(s)</span>
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 border-b pb-2.5">
+                        <span className="text-muted-foreground">Voids</span>
+                        <span className="text-right">
+                          <span className="block font-semibold tabular-nums text-destructive">{formatNaira(report.voids.total)}</span>
+                          <span className="block text-xs text-muted-foreground">{report.voids.count} void(s)</span>
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-muted-foreground">Discounts given</span>
+                        <span className="font-semibold tabular-nums">{formatNaira(report.sales.discounts)}</span>
+                      </div>
+                    </div>
+                  </GlassCard>
+                </Stagger>
+              </div>
+
+              <FadeIn>
+                <GlassCard className="overflow-hidden">
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4">
+                    <h3 className="text-[0.95rem] font-semibold leading-tight">By cashier</h3>
+                    <Badge variant="outline">{report.byCashier.length} cashier(s)</Badge>
+                  </div>
+                  <div className="px-5 pb-4 pt-3">
+                    {report.byCashier.length ? (
+                      <div className="grid gap-x-8 sm:grid-cols-2 xl:grid-cols-3">
+                        {report.byCashier.map((c) => (
+                          <div key={c.name} className="flex items-center justify-between gap-3 border-b py-2 text-sm last:border-0">
+                            <span className="min-w-0 truncate">{c.name} <span className="text-xs text-muted-foreground">({c.count})</span></span>
+                            <span className="font-semibold tabular-nums">{formatNaira(c.total)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState title="No cashier sales in this period" className="border-0" />
+                    )}
+                  </div>
+                </GlassCard>
+              </FadeIn>
             </>
+          ) : loading ? (
+            <InlineLoading label="Loading reports" className="py-16" />
+          ) : (
+            <EmptyState title="No report loaded" hint="Pick a period above — figures load from your validated records." className="border-0" />
           )}
         </TabsContent>
 
-        <TabsContent value="products" className="mt-4">
-          {report && (
-            <Card>
-              <CardHeader><CardTitle className="text-base">Product performance (period)</CardTitle><CardDescription>Top 20 by revenue — gross profit is per-product revenue − COGS</CardDescription></CardHeader>
-              <CardContent className="p-0">
-                <ScrollArea className="max-h-[55vh]">
-                  <Table>
-                    <TableHeader><TableRow><TableHead>Product</TableHead><TableHead className="text-right">Qty sold</TableHead><TableHead className="text-right">Revenue</TableHead><TableHead className="text-right">COGS</TableHead><TableHead className="text-right">Gross profit</TableHead></TableRow></TableHeader>
-                    <TableBody>
-                      {report.topProducts.map((p) => (
-                        <TableRow key={p.name}>
-                          <TableCell className="font-medium">{p.name}</TableCell>
-                          <TableCell className="text-right">{Number(p.qty).toLocaleString()}</TableCell>
-                          <TableCell className="text-right">{String(p.revenue)}</TableCell>
-                          <TableCell className="text-right text-slate-500">{String(p.cogs)}</TableCell>
-                          <TableCell className="text-right font-semibold text-teal-700">{String(p.profit)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
-              </CardContent>
-            </Card>
+        <TabsContent value="products" className="mt-4 space-y-4">
+          {report ? (
+            <>
+              <FadeIn>
+                <ChartCard
+                  title="Top products by revenue"
+                  description="Top 8 of the period — axis labels abbreviated, full detail in the table below"
+                  empty={!report.topProducts.length}
+                  height={280}
+                >
+                  <ComparisonBarChart
+                    data={report.topProducts.slice(0, 8).map((p) => ({ name: p.name, short: shortLabel(p.name), revenue: num(p.revenue) }))}
+                    bars={[{ key: "revenue", name: "Revenue" }]}
+                    xKey="short"
+                  />
+                </ChartCard>
+              </FadeIn>
+
+              <FadeIn>
+                <GlassCard className="overflow-hidden">
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4">
+                    <div>
+                      <h3 className="text-[0.95rem] font-semibold leading-tight">Product performance (period)</h3>
+                      <p className="mt-0.5 text-xs text-muted-foreground">Top 20 by revenue — gross profit is per-product revenue − COGS</p>
+                    </div>
+                    <Badge variant="outline">{report.topProducts.length} product(s)</Badge>
+                  </div>
+                  <div className="px-2 pb-4 pt-2 sm:px-4">
+                    <ScrollArea className="max-h-[55vh]">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Product</TableHead>
+                            <TableHead className="text-right">Qty sold</TableHead>
+                            <TableHead className="text-right">Revenue</TableHead>
+                            <TableHead className="text-right">COGS</TableHead>
+                            <TableHead className="text-right">Gross profit</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {report.topProducts.length ? (
+                            report.topProducts.map((p) => (
+                              <TableRow key={p.name}>
+                                <TableCell className="font-medium">{p.name}</TableCell>
+                                <TableCell className="text-right tabular-nums">{Number(p.qty).toLocaleString()}</TableCell>
+                                <TableCell className="text-right tabular-nums">{formatNaira(p.revenue)}</TableCell>
+                                <TableCell className="text-right tabular-nums text-muted-foreground">{formatNaira(p.cogs)}</TableCell>
+                                <TableCell className={cn("text-right font-semibold tabular-nums", POSITIVE_TEXT)}>{formatNaira(p.profit)}</TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell colSpan={5}>
+                                <EmptyState title="No product sales in this period" hint="Once sales are recorded in the selected window, the leaders appear here." className="border-0" />
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </ScrollArea>
+                  </div>
+                </GlassCard>
+              </FadeIn>
+            </>
+          ) : loading ? (
+            <InlineLoading label="Loading reports" className="py-16" />
+          ) : (
+            <EmptyState title="No report loaded" hint="Pick a period above — figures load from your validated records." className="border-0" />
           )}
         </TabsContent>
 
         <TabsContent value="inventory" className="mt-4 space-y-4">
-          {invReport && (
+          {invReport ? (
             <>
-              <div className="grid gap-3 md:grid-cols-4">
-                <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Stock value at cost</p><p className="text-xl font-bold">{formatNaira(invReport.valuation.total)}</p><p className="text-xs text-slate-400">{invReport.valuation.productCount} products in stock</p></CardContent></Card>
-                <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Expiring ≤90d exposure</p><p className="text-xl font-bold text-amber-600">{formatNaira(invReport.expiringValue)}</p></CardContent></Card>
-                <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Expired value</p><p className="text-xl font-bold text-red-600">{formatNaira(invReport.expiredValue)}</p></CardContent></Card>
-                <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Low-stock products</p><p className="text-xl font-bold">{invReport.lowStock.length}</p></CardContent></Card>
-              </div>
+              <Stagger className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <KpiCard
+                  title="Stock value at cost"
+                  value={num(invReport.valuation.total)}
+                  icon={Boxes}
+                  sub={`${invReport.valuation.productCount} products in stock`}
+                />
+                <KpiCard title="Expiring ≤90d exposure" value={num(invReport.expiringValue)} tone="warning" icon={Hourglass} />
+                <KpiCard title="Expired value" value={num(invReport.expiredValue)} tone="danger" icon={ShieldAlert} />
+                <KpiCard
+                  title="Low-stock products"
+                  value={invReport.lowStock.length}
+                  format="number"
+                  tone={invReport.lowStock.length > 0 ? "warning" : "positive"}
+                  icon={PackageX}
+                />
+              </Stagger>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardHeader className="pb-2"><CardTitle className="text-base">Batches requiring review</CardTitle></CardHeader>
-                  <CardContent className="p-0">
-                    <ScrollArea className="max-h-72">
-                      <Table>
-                        <TableHeader><TableRow><TableHead>Batch</TableHead><TableHead>Expiry</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Value</TableHead></TableRow></TableHeader>
-                        <TableBody>
-                          {invReport.batches.map((b, i) => (
-                            <TableRow key={i} className={b.status === "EXPIRED" ? "bg-red-50/50" : b.daysLeft <= 90 ? "bg-amber-50/40" : ""}>
-                              <TableCell className="text-xs">{b.productName}<div className="font-mono text-slate-400">{b.batchNumber}</div></TableCell>
-                              <TableCell className="text-xs">{new Date(b.expiryDate).toLocaleDateString()}<div className={b.status === "EXPIRED" ? "text-red-500" : "text-amber-500"}>{b.status === "EXPIRED" ? "EXPIRED" : `${b.daysLeft}d`}</div></TableCell>
-                              <TableCell className="text-right">{Number(b.quantityRemaining)} {b.baseUnit}</TableCell>
-                              <TableCell className="text-right font-medium">{String(b.valueAtCost)}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </ScrollArea>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2"><CardTitle className="text-base">Fast movers (30d) & never sold</CardTitle></CardHeader>
-                  <CardContent className="p-0">
-                    <ScrollArea className="max-h-72">
-                      <Table>
-                        <TableHeader><TableRow><TableHead>Product</TableHead><TableHead className="text-right">Qty (30d)</TableHead><TableHead className="text-right">Revenue</TableHead></TableRow></TableHeader>
-                        <TableBody>
-                          {invReport.fastMovers.map((f) => (
-                            <TableRow key={f.name}><TableCell className="text-xs font-medium">{f.name}</TableCell><TableCell className="text-right">{Number(f.qty).toLocaleString()}</TableCell><TableCell className="text-right">{String(f.revenue)}</TableCell></TableRow>
-                          ))}
-                          {invReport.neverSold.map((p) => (
-                            <TableRow key={p.name} className="bg-slate-50"><TableCell className="text-xs font-medium">{p.name} <Badge variant="outline" className="text-[9px]">no sales</Badge></TableCell><TableCell className="text-right text-slate-400">0</TableCell><TableCell /></TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </ScrollArea>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {invReport.adjustments.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-2"><CardTitle className="text-base">Recent stock adjustments (30d)</CardTitle></CardHeader>
-                  <CardContent>
-                    <div className="space-y-1 text-sm">
-                      {invReport.adjustments.map((a, i) => (
-                        <div key={i} className="flex justify-between border-b last:border-0 pb-1">
-                          <span>{a.productName} — <Badge variant="outline" className="text-[10px]">{a.type}</Badge> {Number(a.quantity)}</span>
-                          <span className="text-xs text-slate-500 max-w-64 truncate">{a.reason}</span>
-                        </div>
-                      ))}
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Stagger delay={0.05}>
+                  <GlassCard className="flex h-full flex-col overflow-hidden">
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4">
+                      <div>
+                        <h3 className="text-[0.95rem] font-semibold leading-tight">Batches requiring review</h3>
+                        <p className="mt-0.5 text-xs text-muted-foreground">Pharmacy batches expiring within 90 days, or already expired</p>
+                      </div>
+                      <Badge variant="outline">{invReport.batches.length}</Badge>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                    <div className="px-2 pb-4 pt-2 sm:px-4">
+                      {invReport.batches.length ? (
+                        <ScrollArea className="max-h-72">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Batch</TableHead>
+                                <TableHead>Expiry</TableHead>
+                                <TableHead className="text-right">Qty</TableHead>
+                                <TableHead className="text-right">Value</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {invReport.batches.map((b, i) => (
+                                <TableRow key={i} className={b.status === "EXPIRED" ? "bg-red-50/50" : b.daysLeft <= 90 ? "bg-amber-50/40" : ""}>
+                                  <TableCell className="text-xs">
+                                    {b.productName}
+                                    <div className="font-mono text-xs text-muted-foreground">{b.batchNumber}</div>
+                                  </TableCell>
+                                  <TableCell className="text-xs">
+                                    {new Date(b.expiryDate).toLocaleDateString()}
+                                    <div
+                                      className={cn("font-medium", b.status === "EXPIRED" ? "text-destructive" : "text-amber-600")}
+                                      aria-label={b.status === "EXPIRED" ? "Expired" : `${b.daysLeft} days left`}
+                                    >
+                                      {b.status === "EXPIRED" ? "EXPIRED" : `${b.daysLeft}d left`}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-right tabular-nums">{Number(b.quantityRemaining)} {b.baseUnit}</TableCell>
+                                  <TableCell className="text-right font-medium tabular-nums">{formatNaira(b.valueAtCost)}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </ScrollArea>
+                      ) : (
+                        <EmptyState title="No batches need review" hint="No pharmacy batches expire within the next 90 days." className="mx-2 my-4" />
+                      )}
+                    </div>
+                  </GlassCard>
+                </Stagger>
+
+                <Stagger delay={0.1}>
+                  <GlassCard className="flex h-full flex-col overflow-hidden">
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4">
+                      <div>
+                        <h3 className="text-[0.95rem] font-semibold leading-tight">Never sold (30d)</h3>
+                        <p className="mt-0.5 text-xs text-muted-foreground">Active products with no recorded sale in the last 30 days</p>
+                      </div>
+                      <Badge variant="outline">{invReport.neverSold.length}</Badge>
+                    </div>
+                    <div className="px-2 pb-4 pt-2 sm:px-4">
+                      {invReport.neverSold.length ? (
+                        <ScrollArea className="max-h-72">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Product</TableHead>
+                                <TableHead>Unit</TableHead>
+                                <TableHead className="text-right">Status</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {invReport.neverSold.map((p) => (
+                                <TableRow key={p.name}>
+                                  <TableCell className="text-xs font-medium">{p.name}</TableCell>
+                                  <TableCell className="text-xs text-muted-foreground">{p.baseUnit}</TableCell>
+                                  <TableCell className="text-right"><Badge variant="outline" className="text-[9px]">no sales</Badge></TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </ScrollArea>
+                      ) : (
+                        <EmptyState
+                          icon={PackageX}
+                          title="Nothing idle"
+                          hint="Every active product recorded at least one sale in the last 30 days."
+                          className="mx-2 my-4"
+                        />
+                      )}
+                    </div>
+                  </GlassCard>
+                </Stagger>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-3">
+                <Stagger className="lg:col-span-2" delay={0.05}>
+                  <ChartCard
+                    title="Fast movers (30d)"
+                    description="Top 10 products by revenue, last 30 days — axis labels abbreviated"
+                    empty={!invReport.fastMovers.length}
+                    height={300}
+                  >
+                    <ComparisonBarChart
+                      data={invReport.fastMovers.map((f) => ({ name: f.name, short: shortLabel(f.name), revenue: num(f.revenue) }))}
+                      bars={[{ key: "revenue", name: "Revenue" }]}
+                      xKey="short"
+                    />
+                  </ChartCard>
+                </Stagger>
+                <Stagger delay={0.1}>
+                  <GlassCard className="flex h-full flex-col p-5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h3 className="text-[0.95rem] font-semibold leading-tight">Recent stock adjustments (30d)</h3>
+                        <p className="mt-0.5 text-xs text-muted-foreground">Latest entries, newest first</p>
+                      </div>
+                      <ClipboardList className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </div>
+                    <div className="mt-4 flex-1 space-y-2.5 text-sm">
+                      {invReport.adjustments.length ? (
+                        invReport.adjustments.map((a, i) => (
+                          <div key={i} className="flex items-center justify-between gap-2 border-b pb-2 last:border-0 last:pb-0">
+                            <span className="min-w-0">
+                              {a.productName} — <Badge variant="outline" className="text-[10px]">{a.type}</Badge>{" "}
+                              <span className="tabular-nums">{Number(a.quantity)}</span>
+                            </span>
+                            <span className="max-w-36 truncate text-xs text-muted-foreground" title={a.reason}>{a.reason}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <EmptyState icon={ClipboardList} title="No stock adjustments" hint="No adjustments recorded in the last 30 days." className="border-0" />
+                      )}
+                    </div>
+                  </GlassCard>
+                </Stagger>
+              </div>
             </>
+          ) : loading ? (
+            <InlineLoading label="Loading inventory report" className="py-16" />
+          ) : (
+            <EmptyState title="No inventory report loaded" hint="Figures load from your validated records — try again in a moment." className="border-0" />
           )}
         </TabsContent>
       </Tabs>

@@ -5,7 +5,6 @@ import { listSales, voidSale, requestRefund, approveRefund, rejectRefund, listRe
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -18,6 +17,9 @@ import { useAppStore } from "@/store/app-store";
 import { Printer, Undo2, Ban, Check, X } from "lucide-react";
 import { ReceiptDialog } from "@/components/pos/pos-view";
 import { useDataLoader } from "@/hooks/use-data-loader";
+import { GlassCard, PageHeader, EmptyState, FadeIn } from "./ui/primitives";
+import { InlineLoading } from "./ui/loading";
+import { cn } from "@/lib/utils";
 
 type SaleRow = {
   id: string; number: string; status: string; total: { toString(): string }; createdAt: string;
@@ -38,6 +40,7 @@ export function SalesView({ businessId }: { businessId: string }) {
   const [refunds, setRefunds] = useState<RefundRow[]>([]);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [search, setSearch] = useState("");
+  const [loaded, setLoaded] = useState(false);
   const [receipt, setReceipt] = useState<Awaited<ReturnType<typeof reprintReceipt>> | null>(null);
   const [voidTarget, setVoidTarget] = useState<SaleRow | null>(null);
   const [voidReason, setVoidReason] = useState("");
@@ -59,6 +62,8 @@ export function SalesView({ businessId }: { businessId: string }) {
       setRefunds(r);
     } catch (err) {
       toast({ title: "Load failed", description: err instanceof Error ? err.message : "", variant: "destructive" });
+    } finally {
+      setLoaded(true);
     }
   }, [businessId, statusFilter, search, toast]);
 
@@ -121,103 +126,136 @@ export function SalesView({ businessId }: { businessId: string }) {
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Sales & Refunds</h1>
-        <p className="text-sm text-slate-500">Full transaction history — voids and refunds preserve the original records with linked reversals.</p>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="Sales & Refunds"
+        subtitle="Full transaction history — voids and refunds preserve the original records with linked reversals."
+      />
 
-      <Tabs defaultValue="sales">
-        <TabsList>
-          <TabsTrigger value="sales">Sales ({sales.length})</TabsTrigger>
-          <TabsTrigger value="refunds">Refunds ({refunds.length})</TabsTrigger>
-        </TabsList>
+      <FadeIn>
+        <Tabs defaultValue="sales">
+          <TabsList>
+            <TabsTrigger value="sales">Sales ({sales.length})</TabsTrigger>
+            <TabsTrigger value="refunds">Refunds ({refunds.length})</TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="sales" className="mt-4 space-y-3">
-          <div className="flex gap-2">
-            <Input placeholder="Receipt number…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All statuses</SelectItem>
-                <SelectItem value="COMPLETED">Completed</SelectItem>
-                <SelectItem value="VOIDED">Voided</SelectItem>
-                <SelectItem value="PARTIALLY_REFUNDED">Partially refunded</SelectItem>
-                <SelectItem value="REFUNDED">Refunded</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <Card>
-            <CardContent className="p-0">
-              <ScrollArea className="max-h-[60vh]">
-                <Table>
-                  <TableHeader>
-                    <TableRow><TableHead>Receipt</TableHead><TableHead>When</TableHead><TableHead>Cashier</TableHead><TableHead>Dept mix</TableHead><TableHead className="text-right">Total</TableHead><TableHead>Status</TableHead><TableHead /></TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sales.map((s) => (
-                      <TableRow key={s.id}>
-                        <TableCell className="font-mono text-xs">{s.number}{s.channel === "OFFLINE_SYNC" && <Badge variant="outline" className="ml-1 text-[9px] border-amber-300 text-amber-600">offline→synced</Badge>}</TableCell>
-                        <TableCell className="text-xs">{new Date(s.createdAt).toLocaleString()}</TableCell>
-                        <TableCell className="text-sm">{s.cashier.name}</TableCell>
-                        <TableCell className="text-xs">{[...new Set(s.items.map((i) => i.department))].join(" + ")}</TableCell>
-                        <TableCell className="text-right font-semibold">{Number(s.total).toLocaleString()}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={s.status === "COMPLETED" ? "border-emerald-200 text-emerald-700" : s.status === "VOIDED" ? "border-red-200 text-red-600" : "border-amber-200 text-amber-700"}>
-                            {s.status.replace("_", " ")}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="space-x-1 whitespace-nowrap">
-                          <Button size="sm" variant="ghost" title="Reprint (audited)" onClick={() => void handleReprint(s.id)}><Printer className="h-3.5 w-3.5" /></Button>
-                          {s.status === "COMPLETED" && (
-                            <>
-                              <Button size="sm" variant="ghost" title="Refund" onClick={() => { setRefundTarget(s); setRefundQty({}); setRefundReason(""); }}><Undo2 className="h-3.5 w-3.5 text-amber-600" /></Button>
-                              <Button size="sm" variant="ghost" title="Void (manager)" onClick={() => { setVoidTarget(s); setVoidReason(""); }}><Ban className="h-3.5 w-3.5 text-red-500" /></Button>
-                            </>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        </TabsContent>
+          <TabsContent value="sales" className="mt-4 space-y-3">
+            <GlassCard className="overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-[0.95rem] font-semibold">Sales</h3>
+                  <Badge variant="outline">{sales.length}</Badge>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input placeholder="Receipt number…" value={search} onChange={(e) => setSearch(e.target.value)} className="w-44" />
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">All statuses</SelectItem>
+                      <SelectItem value="COMPLETED">Completed</SelectItem>
+                      <SelectItem value="VOIDED">Voided</SelectItem>
+                      <SelectItem value="PARTIALLY_REFUNDED">Partially refunded</SelectItem>
+                      <SelectItem value="REFUNDED">Refunded</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="px-5 pb-4 pt-3">
+                {!loaded ? (
+                  <InlineLoading label="Loading sales" />
+                ) : sales.length === 0 ? (
+                  <EmptyState icon={Printer} title="No sales match this view" hint="Try clearing the receipt search or choosing a different status filter." className="border-0" />
+                ) : (
+                  <ScrollArea className="max-h-[60vh]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow><TableHead>Receipt</TableHead><TableHead>When</TableHead><TableHead>Cashier</TableHead><TableHead>Dept mix</TableHead><TableHead className="text-right">Total</TableHead><TableHead>Status</TableHead><TableHead /></TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {sales.map((s) => (
+                          <TableRow key={s.id}>
+                            <TableCell className="font-mono text-xs tabular-nums">{s.number}{s.channel === "OFFLINE_SYNC" && <Badge variant="outline" className="ml-1 text-[9px] border-amber-300 text-amber-600">offline→synced</Badge>}</TableCell>
+                            <TableCell className="text-xs">{new Date(s.createdAt).toLocaleString()}</TableCell>
+                            <TableCell className="text-sm">{s.cashier.name}</TableCell>
+                            <TableCell className="text-xs">{[...new Set(s.items.map((i) => i.department))].join(" + ")}</TableCell>
+                            <TableCell className="text-right font-semibold tabular-nums">{Number(s.total).toLocaleString()}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={cn(
+                                s.status === "COMPLETED" && "border-[oklch(0.585_0.115_163/0.4)] text-[oklch(0.50_0.11_163)]",
+                                s.status === "VOIDED" && "border-destructive/40 text-destructive",
+                                (s.status === "PARTIALLY_REFUNDED" || s.status === "REFUNDED") && "border-amber-400/50 text-amber-600",
+                              )}>
+                                {s.status.replace("_", " ")}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="space-x-1 whitespace-nowrap">
+                              <Button size="sm" variant="ghost" title="Reprint (audited)" onClick={() => void handleReprint(s.id)}><Printer className="h-3.5 w-3.5" /><span className="sr-only">Reprint receipt for {s.number}</span></Button>
+                              {s.status === "COMPLETED" && (
+                                <>
+                                  <Button size="sm" variant="ghost" title="Refund" onClick={() => { setRefundTarget(s); setRefundQty({}); setRefundReason(""); }}><Undo2 className="h-3.5 w-3.5 text-amber-600" /><span className="sr-only">Refund sale {s.number}</span></Button>
+                                  <Button size="sm" variant="ghost" title="Void (manager)" onClick={() => { setVoidTarget(s); setVoidReason(""); }}><Ban className="h-3.5 w-3.5 text-red-500" /><span className="sr-only">Void sale {s.number}</span></Button>
+                                </>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                )}
+              </div>
+            </GlassCard>
+          </TabsContent>
 
-        <TabsContent value="refunds" className="mt-4">
-          <Card>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader><TableRow><TableHead>Refund</TableHead><TableHead>Sale</TableHead><TableHead>Items</TableHead><TableHead className="text-right">Amount</TableHead><TableHead>Status</TableHead><TableHead>Requested by</TableHead><TableHead /></TableRow></TableHeader>
-                <TableBody>
-                  {refunds.map((r) => (
-                    <TableRow key={r.id}>
-                      <TableCell className="font-mono text-xs">{r.number}<div className="text-slate-400">{new Date(r.createdAt).toLocaleDateString()}</div></TableCell>
-                      <TableCell className="font-mono text-xs">{r.sale.number}</TableCell>
-                      <TableCell className="text-xs">{r.lines.map((l) => `${l.saleItem.productName} ×${l.quantity}`).join("; ")}</TableCell>
-                      <TableCell className="text-right font-semibold">{Number(r.amount).toLocaleString()}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={r.status === "COMPLETED" ? "border-emerald-200 text-emerald-700" : r.status === "PENDING" ? "border-amber-200 text-amber-700" : r.status === "REJECTED" ? "border-red-200 text-red-600" : ""}>{r.status}</Badge>
-                      </TableCell>
-                      <TableCell className="text-xs">{r.requestedBy.name}</TableCell>
-                      <TableCell>
-                        {r.status === "PENDING" && (
-                          <div className="space-x-1">
-                            <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-200" onClick={() => void handleRefundAction(r.id, true)}><Check className="h-3.5 w-3.5" /></Button>
-                            <Button size="sm" variant="outline" className="text-red-600 border-red-200" onClick={() => void handleRefundAction(r.id, false)}><X className="h-3.5 w-3.5" /></Button>
-                          </div>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {!refunds.length && <TableRow><TableCell colSpan={7} className="text-center py-8 text-slate-400">No refunds recorded.</TableCell></TableRow>}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="refunds" className="mt-4">
+            <GlassCard className="overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-[0.95rem] font-semibold">Refunds</h3>
+                  <Badge variant="outline">{refunds.length}</Badge>
+                </div>
+                <span className="text-xs text-muted-foreground">Pending refunds need manager/owner approval</span>
+              </div>
+              <div className="px-5 pb-4 pt-3">
+                {!loaded ? (
+                  <InlineLoading label="Loading refunds" />
+                ) : (
+                  <Table>
+                    <TableHeader><TableRow><TableHead>Refund</TableHead><TableHead>Sale</TableHead><TableHead>Items</TableHead><TableHead className="text-right">Amount</TableHead><TableHead>Status</TableHead><TableHead>Requested by</TableHead><TableHead /></TableRow></TableHeader>
+                    <TableBody>
+                      {refunds.map((r) => (
+                        <TableRow key={r.id}>
+                          <TableCell className="font-mono text-xs tabular-nums">{r.number}<div className="text-muted-foreground/70">{new Date(r.createdAt).toLocaleDateString()}</div></TableCell>
+                          <TableCell className="font-mono text-xs tabular-nums">{r.sale.number}</TableCell>
+                          <TableCell className="text-xs">{r.lines.map((l) => `${l.saleItem.productName} ×${l.quantity}`).join("; ")}</TableCell>
+                          <TableCell className="text-right font-semibold tabular-nums">{Number(r.amount).toLocaleString()}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={cn(
+                              r.status === "COMPLETED" && "border-[oklch(0.585_0.115_163/0.4)] text-[oklch(0.50_0.11_163)]",
+                              r.status === "PENDING" && "border-amber-400/50 text-amber-600",
+                              r.status === "REJECTED" && "border-destructive/40 text-destructive",
+                            )}>{r.status}</Badge>
+                          </TableCell>
+                          <TableCell className="text-xs">{r.requestedBy.name}</TableCell>
+                          <TableCell>
+                            {r.status === "PENDING" && (
+                              <div className="space-x-1">
+                                <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-200" onClick={() => void handleRefundAction(r.id, true)}><Check className="h-3.5 w-3.5" /><span className="sr-only">Approve refund {r.number}</span></Button>
+                                <Button size="sm" variant="outline" className="text-red-600 border-red-200" onClick={() => void handleRefundAction(r.id, false)}><X className="h-3.5 w-3.5" /><span className="sr-only">Reject refund {r.number}</span></Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {!refunds.length && <TableRow><TableCell colSpan={7}><EmptyState icon={Undo2} title="No refunds recorded" hint="Refunds requested from the Sales tab will appear here for approval." className="border-0" /></TableCell></TableRow>}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            </GlassCard>
+          </TabsContent>
+        </Tabs>
+      </FadeIn>
 
       {/* Void dialog */}
       <Dialog open={!!voidTarget} onOpenChange={(o) => !o && setVoidTarget(null)}>
@@ -238,7 +276,7 @@ export function SalesView({ businessId }: { businessId: string }) {
           <div className="space-y-2">
             {refundTarget?.items.map((item) => (
               <div key={item.id} className="flex items-center justify-between gap-2 border rounded p-2">
-                <div className="text-sm">{item.productName} <span className="text-xs text-slate-400">(sold {Number(item.quantityBase)})</span></div>
+                <div className="text-sm">{item.productName} <span className="text-xs text-muted-foreground/70">(sold {Number(item.quantityBase)})</span></div>
                 <Input className="w-24" placeholder="qty" value={refundQty[item.id] ?? ""} onChange={(e) => setRefundQty({ ...refundQty, [item.id]: e.target.value })} inputMode="decimal" />
               </div>
             ))}

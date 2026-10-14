@@ -67,12 +67,13 @@ export async function getReports(
     .sort((a, b) => b.revenue.comparedTo(a.revenue))
     .slice(0, 20);
 
-  // Daily series for charting
+  // Daily series for charting (PostgreSQL-native date_trunc)
   const series = await db.$queryRaw<{ day: string; total: number; count: number }[]>`
-    SELECT date(createdAt / 1000, 'unixepoch') as day, CAST(SUM(total) AS REAL) as total, COUNT(*) as count
-    FROM Sale WHERE businessId = ${bid} AND status = 'COMPLETED'
-    AND createdAt >= ${from} AND createdAt <= ${to}
-    GROUP BY date(createdAt) ORDER BY day`;
+    SELECT to_char(date_trunc('day', "createdAt"), 'YYYY-MM-DD') AS day,
+           SUM("total")::float8 AS total, COUNT(*)::int AS count
+    FROM "Sale" WHERE "businessId" = ${bid} AND "status" = 'COMPLETED'
+    AND "createdAt" >= ${from} AND "createdAt" <= ${to}
+    GROUP BY 1 ORDER BY 1`;
 
   return toPlain({
     period: { from: opts.from, to: opts.to, generatedAt: new Date().toISOString() },

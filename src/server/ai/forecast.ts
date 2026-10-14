@@ -17,11 +17,12 @@ export async function getProductSalesHistory(businessId: string, productId: stri
   const from = new Date(Date.now() - days * 864e5);
   // Group by the authoritative Sale date (SaleItem.createdAt reflects sync time)
   const rows = await db.$queryRaw<{ day: string; qty: number }[]>`
-    SELECT date(s.createdAt / 1000, 'unixepoch') as day, CAST(SUM(si.quantityBase) AS REAL) as qty
-    FROM SaleItem si JOIN Sale s ON s.id = si.saleId
-    WHERE si.businessId = ${businessId} AND si.productId = ${productId}
-    AND s.status = 'COMPLETED'
-    GROUP BY day ORDER BY day ASC`;
+    SELECT to_char(date_trunc('day', s."createdAt"), 'YYYY-MM-DD') AS day,
+           SUM(si."quantityBase")::float8 AS qty
+    FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
+    WHERE si."businessId" = ${businessId} AND si."productId" = ${productId}
+    AND s."status" = 'COMPLETED' AND s."createdAt" >= ${from}
+    GROUP BY 1 ORDER BY 1 ASC`;
   // Scoped to business at SQL level (SaleItem carries businessId)
   const map = new Map(rows.map((r) => [r.day, r.qty]));
   const balance = await db.stockBalance.findUnique({ where: { productId }, select: { quantity: true, updatedAt: true } });

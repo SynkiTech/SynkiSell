@@ -1,0 +1,521 @@
+     1→"use client";
+     2→
+     3→import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+     4→import { useSession } from "next-auth/react";
+     5→import { useAppStore, cartTotal } from "@/store/app-store";
+     6→import { getPosCatalog, completeSale, openShift, getMyShift } from "@/server/actions/pos-actions";
+     7→import { toast } from "@/hooks/use-toast";
+     8→import { loadCatalogCache, saveCatalogCache, queueSale, newSaleKey, listQueuedSales, type CachedProduct, type CatalogCache } from "@/lib/offline/db";
+     9→import { syncOfflineSales } from "@/lib/offline/sync";
+    10→import { Input } from "@/components/ui/input";
+    11→import { Button } from "@/components/ui/button";
+    12→import { Badge } from "@/components/ui/badge";
+    13→import { PageHeader, GlassCard, EmptyState } from "../app/ui/primitives";
+    14→import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+    15→import { Label } from "@/components/ui/label";
+    16→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+    17→import { ScrollArea } from "@/components/ui/scroll-area";
+    18→import { Alert, AlertDescription } from "@/components/ui/alert";
+    19→import { cn } from "@/lib/utils";
+    20→import { Search, Trash2, WifiOff, CloudOff, Printer, X, Minus, Plus, Banknote, Smartphone, CreditCard, CircleAlert, ShoppingBasket } from "lucide-react";
+    21→
+    22→type Receipt = {
+    23→  number: string; createdAt: string; cashier: string;
+    24→  business: { name: string; receiptHeader: string; receiptFooter: string; address?: string | null; phone?: string | null };
+    25→  items: { name: string; quantity: number; unit: string; unitPrice: unknown; discount: unknown; lineTotal: unknown; department: string }[];
+    26→  payments: { method: string; amount: unknown; reference?: string | null }[];
+    27→  subtotal: unknown; discountTotal: unknown; taxTotal: unknown; total: unknown; amountPaid: unknown; changeGiven: unknown; status: string;
+    28→};
+    29→
+    30→const fmt = (n: number | string) => `₦${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    31→
+    32→export function PosView({ businessId, onShiftChanged }: { businessId: string; onShiftChanged?: () => void }) {
+    33→  const { data: session } = useSession();
+    34→  const canDiscountLine = session?.user?.role === "OWNER" || session?.user?.role === "MANAGER" || session?.user?.role === "PHARMACIST";
+    35→
+    36→  const { cart, addToCart, updateCartQty, updateCartDiscount, removeFromCart, clearCart, offline, setOffline, bumpRefresh } = useAppStore();
+    37→  const [catalog, setCatalog] = useState<CatalogCache | null>(null);
+    38→  const [search, setSearch] = useState("");
+    39→  const [deptFilter, setDeptFilter] = useState<"ALL" | "PHARMACY" | "SUPERMARKET">("ALL");
+    40→  const [shift, setShift] = useState<{ id: string; openingCash: number } | null>(null);
+    41→  const [openShiftDialog, setOpenShiftDialog] = useState(false);
+    42→  const [openingFloat, setOpeningFloat] = useState("5000");
+    43→  const [payDialog, setPayDialog] = useState(false);
+    44→  const [paymentMethod, setPaymentMethod] = useState<"CASH" | "TRANSFER" | "CARD">("CASH");
+    45→  const [cashGiven, setCashGiven] = useState("");
+    46→  const [transferRef, setTransferRef] = useState("");
+    47→  const [splitCash, setSplitCash] = useState("");
+    48→  const [splitTransfer, setSplitTransfer] = useState("");
+    49→  const [useSplit, setUseSplit] = useState(false);
+    50→  const [completing, setCompleting] = useState(false);
+    51→  const [receipt, setReceipt] = useState<Receipt | null>(null);
+    52→  const [offlineWarnings, setOfflineWarnings] = useState<string[]>([]);
+    53→  const barcodeRef = useRef<HTMLInputElement>(null);
+    54→
+    55→  const total = cartTotal(cart);
+    56→  const { online } = offline;
+    57→
+    58→  /* ── Catalogue: online fetch with offline cache fallback ── */
+    59→  const loadCatalog = useCallback(async () => {
+    60→    try {
+    61→      const data = await getPosCatalog(businessId);
+    62→      const cache: CatalogCache = {
+    63→        businessId,
+    64→        fetchedAt: new Date().toISOString(),
+    65→        products: data.products.map((p) => ({
+    66→          id: p.id, name: p.name, sku: p.sku, barcodes: p.barcodes,
+    67→          department: p.department, type: p.type, trackBatches: p.trackBatches,
+    68→          sellingPrice: Number(p.sellingPrice), taxRate: Number(p.taxRate), baseUnit: p.baseUnit,
+    69→          conversions: p.conversions.map((c) => ({ fromUnit: c.fromUnit, toUnit: c.toUnit, factor: Number(c.factor) })),
+    70→          stock: Number(p.stock),
+    71→        })),
+    72→        business: data.business ? { ...data.business, defaultTaxRate: Number(data.business.defaultTaxRate) } : null,
+    73→        disclosedNote: "Offline snapshot — cloud stock may be out of date.",
+    74→      };
+    75→      setCatalog(cache);
+    76→      await saveCatalogCache(cache);
+    77→    } catch {
+    78→      const cached = await loadCatalogCache(businessId);
+    79→      if (cached) {
+    80→        setCatalog(cached);
+    81→        setOffline({ online: false });
+    82→        toast({ title: "Offline mode", description: "Using cached catalogue. Stock may be out of date." });
+    83→      } else {
+    84→        toast({ title: "Cannot load POS catalogue", description: "You are offline and no cached catalogue exists yet.", variant: "destructive" });
+    85→      }
+    86→    }
+    87→  }, [businessId, setOffline]);
+    88→
+    89→  useEffect(() => { void loadCatalog(); }, [loadCatalog]);
+    90→
+    91→  const loadShift = useCallback(async () => {
+    92→    try {
+    93→      const r = await getMyShift(businessId);
+    94→      setShift(r?.shift ? { id: r.shift.id, openingCash: 0 } : null);
+    95→      if (!r?.shift) setOpenShiftDialog(true);
+    96→    } catch {
+    97→      setShift(null);
+    98→    }
+    99→  }, [businessId]);
+   100→
+   101→  useEffect(() => { void loadShift(); }, [loadShift]);
+   102→
+   103→  /* ── Barcode / search ── */
+   104→  const filtered = useMemo(() => {
+   105→    if (!catalog) return [];
+   106→    const q = search.trim().toLowerCase();
+   107→    return catalog.products.filter((p) => {
+   108→      if (deptFilter !== "ALL" && p.department !== deptFilter && p.department !== "BOTH") return false;
+   109→      if (!q) return true;
+   110→      return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.barcodes.some((b) => b.includes(q));
+   111→    });
+   112→  }, [catalog, search, deptFilter]);
+   113→
+   114→  function handleBarcodeScan(e: React.KeyboardEvent<HTMLInputElement>) {
+   115→    if (e.key !== "Enter") return;
+   116→    const code = search.trim();
+   117→    if (!code) return;
+   118→    const product = catalog?.products.find((p) => p.barcodes.includes(code)) ?? filtered[0];
+   119→    if (product) {
+   120→      handleAdd(product);
+   121→      setSearch("");
+   122→    } else {
+   123→      toast({ title: "Product not found", description: `No product matches "${code}"`, variant: "destructive" });
+   124→    }
+   125→  }
+   126→
+   127→  function handleAdd(p: CachedProduct) {
+   128→    if (online && p.stock <= 0 && !p.trackBatches) {
+   129→      toast({ title: "Out of stock", description: `${p.name} has no stock`, variant: "destructive" });
+   130→      return;
+   131→    }
+   132→    addToCart({ productId: p.id, name: p.name, department: p.department, soldUnit: p.baseUnit, unitPrice: p.sellingPrice, discountAmount: 0, stock: p.stock, trackBatches: p.trackBatches });
+   133→  }
+   134→
+   135→  /* ── Checkout ── */
+   136→  async function handleOpenShift() {
+   137→    try {
+   138→      await openShift(businessId, Number(openingFloat) || 0);
+   139→      setOpenShiftDialog(false);
+   140→      await loadShift();
+   141→      onShiftChanged?.();
+   142→      toast({ title: "Shift opened", description: `Opening float ₦${openingFloat}` });
+   143→    } catch (err) {
+   144→      toast({ title: "Could not open shift", description: err instanceof Error ? err.message : "Error", variant: "destructive" });
+   145→    }
+   146→  }
+   147→
+   148→  function resetPayment() {
+   149→    setPayDialog(false); setPaymentMethod("CASH"); setCashGiven(""); setTransferRef(""); setSplitCash(""); setSplitTransfer(""); setUseSplit(false);
+   150→  }
+   151→
+   152→  async function handleComplete() {
+   153→    if (!catalog || !cart.length) return;
+   154→    setCompleting(true);
+   155→    const idempotencyKey = newSaleKey();
+   156→
+   157→    const lines = cart.map((c) => ({ productId: c.productId, quantity: c.quantity, soldUnit: c.soldUnit, discountAmount: c.discountAmount }));
+   158→    const payments = useSplit
+   159→      ? [
+   160→          { method: "CASH" as const, amount: Number(splitCash) || 0 },
+   161→          { method: "TRANSFER" as const, amount: Number(splitTransfer) || 0, reference: transferRef || null },
+   162→        ].filter((p) => p.amount > 0)
+   163→      : paymentMethod === "CASH"
+   164→        ? [{ method: "CASH" as const, amount: Number(cashGiven) || total }]
+   165→        : [{ method: paymentMethod, amount: total, reference: transferRef || null }];
+   166→
+   167→    try {
+   168→      if (!online) {
+   169→        // Queue locally — do NOT pretend it's synced
+   170→        await queueSale({
+   171→          idempotencyKey, businessId, shiftId: shift?.id ?? null,
+   172→          lines, payments, transactionDiscount: 0,
+   173→          clientCreatedAt: new Date().toISOString(),
+   174→          status: "pending", attempts: 0,
+   175→        });
+   176→        const pending = await listQueuedSales(businessId);
+   177→        setOffline({ pendingCount: pending.filter((q) => q.status === "pending").length });
+   178→        clearCart();
+   179→        resetPayment();
+   180→        toast({ title: "Sale stored offline", description: "Will sync automatically when connection returns. Not yet in the cloud." });
+   181→        return;
+   182→      }
+   183→
+   184→      const result = await completeSale({
+   185→        businessId, shiftId: shift?.id ?? null, lines, payments,
+   186→        transactionDiscount: 0, idempotencyKey, clientCreatedAt: null, offline: false,
+   187→      });
+   188→      if (result?.ok) {
+   189→        if (result.shortfallWarnings?.length) setOfflineWarnings(result.shortfallWarnings);
+   190→        setReceipt(result.receipt as unknown as Receipt);
+   191→        clearCart();
+   192→        resetPayment();
+   193→        bumpRefresh();
+   194→        void loadCatalog(); // refresh stock
+   195→        toast({ title: `Sale ${result.number} completed`, description: `Total ${fmt(result.total)}${Number(result.changeGiven) > 0 ? ` • change ${fmt(result.changeGiven)}` : ""}` });
+   196→      }
+   197→    } catch (err) {
+   198→      const msg = err instanceof Error ? err.message : "Sale failed";
+   199→      if (msg.includes("INSUFFICIENT_STOCK")) {
+   200→        toast({ title: "Insufficient stock", description: msg.split(":")[1] ?? "Not enough stock", variant: "destructive" });
+   201→      } else if (msg.includes("PERMISSION_DENIED")) {
+   202→        toast({ title: "Not permitted", description: msg.replace("PERMISSION_DENIED: ", ""), variant: "destructive" });
+   203→      } else {
+   204→        toast({ title: "Sale failed", description: msg, variant: "destructive" });
+   205→      }
+   206→    } finally {
+   207→      setCompleting(false);
+   208→    }
+   209→  }
+   210→
+   211→  async function handleManualSync() {
+   212→    const result = await syncOfflineSales(businessId);
+   213→    const pending = await listQueuedSales(businessId);
+   214→    setOffline({ pendingCount: pending.filter((q) => q.status === "pending").length });
+   215→    toast({ title: "Sync complete", description: `${result.synced} synced, ${result.failed} failed, ${result.remaining} remaining` });
+   216→    void loadCatalog();
+   217→  }
+   218→
+   219→  const paymentTotal = useSplit ? (Number(splitCash) || 0) + (Number(splitTransfer) || 0) : Number(cashGiven) || total;
+   220→  const changeDue = Math.max(0, paymentTotal - total);
+   221→  const balanceDue = Math.max(0, total - paymentTotal);
+   222→
+   223→  return (
+   224→    <div className="space-y-4">
+   225→      {/* Header row */}
+   226→      <PageHeader
+   227→        title="Point of Sale"
+   228→        subtitle={<>{catalog?.business?.name ?? ""} • {shift ? "Shift open" : "No shift"}</>}
+   229→        actions={
+   230→          <>
+   231→            {!online && <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700"><WifiOff className="h-3 w-3 mr-1" /> Offline — sales queue locally</Badge>}
+   232→            {online && offline.pendingCount > 0 && (
+   233→              <Button size="sm" variant="outline" onClick={() => void handleManualSync()}><CloudOff className="h-3.5 w-3.5 mr-1" /> Sync {offline.pendingCount} offline sale(s)</Button>
+   234→            )}
+   235→            {!shift && online && <Button size="sm" onClick={() => setOpenShiftDialog(true)}>Open shift</Button>}
+   236→          </>
+   237→        }
+   238→      />
+   239→
+   240→      {!online && (
+   241→        <Alert className="border-amber-300 bg-amber-50">
+   242→          <WifiOff className="h-4 w-4 text-amber-600" />
+   243→          <AlertDescription className="text-amber-800">
+   244→            Offline mode: catalogue snapshot from {catalog?.fetchedAt ? new Date(catalog.fetchedAt).toLocaleTimeString() : "—"}.
+   245→            Stock shown may be out of date; offline sales queue locally and sync when reconnected.
+   246→          </AlertDescription>
+   247→        </Alert>
+   248→      )}
+   249→      {offlineWarnings.length > 0 && (
+   250→        <Alert className="border-amber-300 bg-amber-50">
+   251→          <CircleAlert className="h-4 w-4 text-amber-600" />
+   252→          <AlertDescription className="text-amber-800">{offlineWarnings.join(" • ")}</AlertDescription>
+   253→        </Alert>
+   254→      )}
+   255→
+   256→      <div className="grid gap-4 lg:grid-cols-5">
+   257→        {/* Products */}
+   258→        <div className="lg:col-span-3 space-y-3">
+   259→          <div className="flex gap-2">
+   260→            <div className="relative flex-1">
+   261→              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+   262→              <Input
+   263→                ref={barcodeRef}
+   264→                autoFocus
+   265→                placeholder="Scan barcode or search products… (Enter adds first match)"
+   266→                value={search}
+   267→                onChange={(e) => setSearch(e.target.value)}
+   268→                onKeyDown={handleBarcodeScan}
+   269→                className="pl-9 bg-card"
+   270→              />
+   271→              {search && <button aria-label="Clear search" className="absolute right-2 top-2.5" onClick={() => setSearch("")}><X className="h-4 w-4 text-muted-foreground" /></button>}
+   272→            </div>
+   273→            <Select value={deptFilter} onValueChange={(v: "ALL" | "PHARMACY" | "SUPERMARKET") => setDeptFilter(v)}>
+   274→              <SelectTrigger className="w-40 bg-card"><SelectValue /></SelectTrigger>
+   275→              <SelectContent>
+   276→                <SelectItem value="ALL">All departments</SelectItem>
+   277→                <SelectItem value="PHARMACY">Pharmacy</SelectItem>
+   278→                <SelectItem value="SUPERMARKET">Supermarket</SelectItem>
+   279→              </SelectContent>
+   280→            </Select>
+   281→          </div>
+   282→
+   283→          <ScrollArea className="h-[calc(100vh-320px)] min-h-72">
+   284→            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2 pr-2">
+   285→              {filtered.map((p) => (
+   286→                <button
+   287→                  key={p.id}
+   288→                  onClick={() => handleAdd(p)}
+   289→                  className={cn(
+   290→                    "text-left rounded-lg border border-border p-2.5 bg-card hover:border-primary/60 hover:shadow-sm transition-all active:scale-[0.98]",
+   291→                    p.stock <= 0 && !p.trackBatches && "opacity-50"
+   292→                  )}
+   293→                >
+   294→                  <div className="text-xs font-medium text-muted-foreground flex items-center justify-between">
+   295→                    <span>{p.department === "PHARMACY" ? "Pharmacy" : p.department === "BOTH" ? "Both" : "Market"}</span>
+   296→                    <span className={cn("font-semibold tabular-nums", p.stock <= 0 ? "text-destructive" : "text-muted-foreground")}>
+   297→                      {p.trackBatches ? "" : `${p.stock} ${p.baseUnit}`}
+   298→                    </span>
+   299→                  </div>
+   300→                  <div className="mt-1 text-sm font-semibold leading-snug line-clamp-2 min-h-9">{p.name}</div>
+   301→                  <div className="mt-1.5 flex items-center justify-between">
+   302→                    <span className="font-bold text-primary tabular-nums">{fmt(p.sellingPrice)}</span>
+   303→                    <Plus className="h-4 w-4 text-primary" />
+   304→                  </div>
+   305→                </button>
+   306→              ))}
+   307→              {!filtered.length && (
+   308→                <div className="col-span-full">
+   309→                  <EmptyState icon={Search} title="No products match" hint="Check the barcode or search term, or clear the department filter." />
+   310→                </div>
+   311→              )}
+   312→            </div>
+   313→          </ScrollArea>
+   314→        </div>
+   315→
+   316→        {/* Cart */}
+   317→        <GlassCard className="bg-card border-border lg:col-span-2 flex flex-col self-start sticky top-20">
+   318→          <div className="p-4 flex flex-col gap-3">
+   319→            <div className="flex items-center justify-between">
+   320→              <h2 className="font-semibold">Basket ({cart.length})</h2>
+   321→              {cart.length > 0 && <Button size="sm" variant="ghost" className="text-destructive h-7" onClick={clearCart}><Trash2 className="h-3.5 w-3.5" /> Clear</Button>}
+   322→            </div>
+   323→            <ScrollArea className="max-h-[42vh]">
+   324→              <div className="space-y-2">
+   325→                {cart.map((c) => (
+   326→                  <div key={c.productId} className="rounded-lg border p-2 space-y-1.5">
+   327→                    <div className="flex items-start justify-between gap-2">
+   328→                      <span className="text-sm font-medium leading-snug">{c.name}</span>
+   329→                      <button onClick={() => removeFromCart(c.productId)} aria-label={`Remove ${c.name}`}><X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" /></button>
+   330→                    </div>
+   331→                    <div className="flex items-center gap-2">
+   332→                      <div className="flex items-center border rounded-md">
+   333→                        <button className="px-2 py-1" onClick={() => updateCartQty(c.productId, c.quantity - 1)} aria-label="decrease"><Minus className="h-3 w-3" /></button>
+   334→                        <input
+   335→                          className="w-12 text-center text-sm outline-none tabular-nums"
+   336→                          value={c.quantity}
+   337→                          onChange={(e) => updateCartQty(c.productId, Number(e.target.value) || 0)}
+   338→                          inputMode="decimal"
+   339→                        />
+   340→                        <button className="px-2 py-1" onClick={() => updateCartQty(c.productId, c.quantity + 1)} aria-label="increase"><Plus className="h-3 w-3" /></button>
+   341→                      </div>
+   342→                      <span className="text-xs text-muted-foreground tabular-nums">{c.soldUnit} × {fmt(c.unitPrice)}</span>
+   343→                      <span className="ml-auto font-semibold text-sm tabular-nums">{fmt(c.quantity * c.unitPrice - c.discountAmount)}</span>
+   344→                    </div>
+   345→                    {canDiscountLine && (
+   346→                      <div className="flex items-center gap-1.5">
+   347→                        <Label className="text-[10px] text-muted-foreground">Discount ₦</Label>
+   348→                        <input
+   349→                          className="w-20 rounded border bg-card px-1.5 py-0.5 text-xs tabular-nums"
+   350→                          value={c.discountAmount || ""}
+   351→                          placeholder="0"
+   352→                          inputMode="decimal"
+   353→                          onChange={(e) => updateCartDiscount(c.productId, Number(e.target.value) || 0)}
+   354→                        />
+   355→                      </div>
+   356→                    )}
+   357→                  </div>
+   358→                ))}
+   359→                {!cart.length && (
+   360→                  <EmptyState
+   361→                    icon={ShoppingBasket}
+   362→                    title="Basket is empty"
+   363→                    hint="Scan or tap a product."
+   364→                    className="border-0"
+   365→                  />
+   366→                )}
+   367→              </div>
+   368→            </ScrollArea>
+   369→
+   370→            <div className="border-t pt-3 space-y-1.5">
+   371→              <div className="flex justify-between text-sm text-muted-foreground"><span>Items</span><span className="tabular-nums">{cart.reduce((a, c) => a + c.quantity, 0)}</span></div>
+   372→              <div className="flex justify-between text-lg font-bold"><span>Total</span><span className="text-primary tabular-nums">{fmt(total)}</span></div>
+   373→              <Button
+   374→                className="w-full h-12 text-base"
+   375→                disabled={!cart.length || completing || (!online && !catalog)}
+   376→                onClick={() => setPayDialog(true)}
+   377→              >
+   378→                {completing ? "Processing…" : `Charge ${fmt(total)}`}
+   379→              </Button>
+   380→              <p className="text-[10px] text-center text-muted-foreground">F2 pay • Esc clear focus — totals verified server-side</p>
+   381→            </div>
+   382→          </div>
+   383→        </GlassCard>
+   384→      </div>
+   385→
+   386→      {/* Open shift dialog */}
+   387→      <Dialog open={openShiftDialog && !!online} onOpenChange={setOpenShiftDialog}>
+   388→        <DialogContent className="glass-strong rounded-2xl">
+   389→          <DialogHeader>
+   390→            <DialogTitle>Open your shift</DialogTitle>
+   391→            <DialogDescription>Record the opening cash float for your drawer.</DialogDescription>
+   392→          </DialogHeader>
+   393→          <div className="space-y-2">
+   394→            <Label>Opening cash (₦)</Label>
+   395→            <Input value={openingFloat} onChange={(e) => setOpeningFloat(e.target.value)} inputMode="decimal" />
+   396→          </div>
+   397→          <DialogFooter>
+   398→            <Button variant="outline" onClick={() => setOpenShiftDialog(false)}>Later</Button>
+   399→            <Button onClick={() => void handleOpenShift()}>Open shift</Button>
+   400→          </DialogFooter>
+   401→        </DialogContent>
+   402→      </Dialog>
+   403→
+   404→      {/* Payment dialog */}
+   405→      <Dialog open={payDialog} onOpenChange={(o) => !o && resetPayment()}>
+   406→        <DialogContent className="max-w-md glass-strong rounded-2xl">
+   407→          <DialogHeader>
+   408→            <DialogTitle>Take payment — {fmt(total)}</DialogTitle>
+   409→            <DialogDescription>Mixed pharmacy + supermarket items complete as ONE sale & one receipt.</DialogDescription>
+   410→          </DialogHeader>
+   411→          <div className="space-y-4">
+   412→            {!useSplit && (
+   413→              <>
+   414→                <div className="grid grid-cols-3 gap-2">
+   415→                  {([["CASH", Banknote], ["TRANSFER", Smartphone], ["CARD", CreditCard]] as const).map(([m, Icon]) => (
+   416→                    <button
+   417→                      key={m}
+   418→                      onClick={() => setPaymentMethod(m)}
+   419→                      className={cn("flex flex-col items-center gap-1 rounded-lg border p-3 text-xs font-medium transition-colors",
+   420→                        paymentMethod === m ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted")}
+   421→                    >
+   422→                      <Icon className="h-5 w-5" />{m}
+   423→                    </button>
+   424→                  ))}
+   425→                </div>
+   426→                {paymentMethod === "CASH" && (
+   427→                  <div className="space-y-2">
+   428→                    <Label>Cash given (₦)</Label>
+   429→                    <Input autoFocus value={cashGiven} onChange={(e) => setCashGiven(e.target.value)} placeholder={String(total)} inputMode="decimal" />
+   430→                    {cashGiven && Number(cashGiven) >= total && (
+   431→                      <p className="text-sm font-semibold text-emerald-700">Change due: {fmt(Number(cashGiven) - total)}</p>
+   432→                    )}
+   433→                    {cashGiven && Number(cashGiven) < total && (
+   434→                      <p className="text-sm text-amber-700">Balance due: {fmt(total - Number(cashGiven))} (recorded on receipt)</p>
+   435→                    )}
+   436→                  </div>
+   437→                )}
+   438→                {(paymentMethod === "TRANSFER" || paymentMethod === "CARD") && (
+   439→                  <div className="space-y-2">
+   440→                    <Label>Reference (optional)</Label>
+   441→                    <Input value={transferRef} onChange={(e) => setTransferRef(e.target.value)} placeholder="e.g. transfer ref / terminal slip no." />
+   442→                    <p className="text-[11px] text-muted-foreground">Card payments are recorded only — no card data is ever stored.</p>
+   443→                  </div>
+   444→                )}
+   445→              </>
+   446→            )}
+   447→            {useSplit && (
+   448→              <div className="space-y-2">
+   449→                <div><Label>Split — cash (₦)</Label><Input value={splitCash} onChange={(e) => setSplitCash(e.target.value)} inputMode="decimal" placeholder="0" /></div>
+   450→                <div><Label>Split — transfer (₦)</Label><Input value={splitTransfer} onChange={(e) => setSplitTransfer(e.target.value)} inputMode="decimal" placeholder="0" /></div>
+   451→                <p className={cn("text-sm", Math.abs(paymentTotal - total) < 0.01 ? "text-emerald-700" : "text-amber-700")}>
+   452→                  {Math.abs(paymentTotal - total) < 0.01 ? "Split matches total." : `Split totals ${fmt(paymentTotal)} vs ${fmt(total)}`}
+   453→                </p>
+   454→              </div>
+   455→            )}
+   456→            <label className="flex items-center gap-2 text-sm">
+   457→              <input type="checkbox" checked={useSplit} onChange={(e) => setUseSplit(e.target.checked)} /> Split tender (cash + transfer)
+   458→            </label>
+   459→          </div>
+   460→          <DialogFooter>
+   461→            <Button variant="outline" onClick={resetPayment}>Cancel</Button>
+   462→            <Button onClick={() => void handleComplete()} disabled={completing || paymentTotal <= 0}>
+   463→              {completing ? "Completing…" : "Complete sale"}
+   464→            </Button>
+   465→          </DialogFooter>
+   466→        </DialogContent>
+   467→      </Dialog>
+   468→
+   469→      {/* Receipt dialog */}
+   470→      <ReceiptDialog receipt={receipt} onClose={() => setReceipt(null)} />
+   471→    </div>
+   472→  );
+   473→}
+   474→
+   475→export function ReceiptDialog({ receipt, onClose }: { receipt: Receipt | null; onClose: () => void }) {
+   476→  if (!receipt) return null;
+   477→  const dec = (v: unknown) => Number(v);
+   478→  return (
+   479→    <Dialog open={!!receipt} onOpenChange={(o) => !o && onClose()}>
+   480→      <DialogContent className="max-w-sm glass-strong rounded-2xl">
+   481→        <DialogHeader>
+   482→          <DialogTitle className="flex items-center gap-2"><Printer className="h-4 w-4" /> Receipt {receipt.number}</DialogTitle>
+   483→        </DialogHeader>
+   484→        <div className="rounded-lg border bg-white p-4 font-mono text-xs space-y-2" id="receipt-print">
+   485→          <div className="text-center">
+   486→            <div className="font-bold text-sm">{receipt.business.receiptHeader || receipt.business.name}</div>
+   487→            {receipt.business.address && <div>{receipt.business.address}</div>}
+   488→            {receipt.business.phone && <div>{receipt.business.phone}</div>}
+   489→            <div className="mt-1">{new Date(receipt.createdAt).toLocaleString()}</div>
+   490→            <div>Cashier: {receipt.cashier}</div>
+   491→            <div className="font-semibold">#{receipt.number}</div>
+   492→          </div>
+   493→          <div className="border-t border-dashed pt-2 space-y-1">
+   494→            {receipt.items.map((i, idx) => (
+   495→              <div key={idx} className="flex justify-between gap-2">
+   496→                <span className="truncate">{i.quantity}× {i.name}</span>
+   497→                <span>{fmt(dec(i.lineTotal))}</span>
+   498→              </div>
+   499→            ))}
+   500→          </div>
+   501→          <div className="border-t border-dashed pt-2 space-y-0.5">
+   502→            <div className="flex justify-between"><span>Subtotal</span><span>{fmt(dec(receipt.subtotal))}</span></div>
+   503→            {dec(receipt.discountTotal) > 0 && <div className="flex justify-between"><span>Discounts</span><span>-{fmt(dec(receipt.discountTotal))}</span></div>}
+   504→            {dec(receipt.taxTotal) > 0 && <div className="flex justify-between"><span>Tax</span><span>{fmt(dec(receipt.taxTotal))}</span></div>}
+   505→            <div className="flex justify-between font-bold text-sm"><span>TOTAL</span><span>{fmt(dec(receipt.total))}</span></div>
+   506→            {receipt.payments.map((p, i) => (
+   507→              <div key={i} className="flex justify-between"><span>{p.method}{p.reference ? ` (${p.reference})` : ""}</span><span>{fmt(dec(p.amount))}</span></div>
+   508→            ))}
+   509→            {dec(receipt.changeGiven) > 0 && <div className="flex justify-between"><span>Change</span><span>{fmt(dec(receipt.changeGiven))}</span></div>}
+   510→          </div>
+   511→          <div className="border-t border-dashed pt-2 text-center">{receipt.business.receiptFooter}</div>
+   512→        </div>
+   513→        <DialogFooter>
+   514→          <Button variant="outline" onClick={onClose}>Close</Button>
+   515→          <Button onClick={() => window.print()}><Printer className="h-4 w-4 mr-1" /> Print</Button>
+   516→        </DialogFooter>
+   517→      </DialogContent>
+   518→    </Dialog>
+   519→  );
+   520→}
+   521→
