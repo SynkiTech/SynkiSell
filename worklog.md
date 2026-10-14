@@ -86,3 +86,23 @@ Stage Summary:
 - Paystack: user gave a hosted payment LINK, not API keys - app stays in MOCK_TEST_MODE until PAYSTACK_SECRET_KEY (sk_test_...) provided
 - GitHub: password auth not usable for git (needs PAT)
 - SECURITY: credentials were shared in chat; DB password == GitHub password; recommend rotation
+
+---
+Task ID: direct-2 (paystack live wiring session)
+Agent: Super Z (main)
+Task: Activate Paystack LIVE_KEYS with user-provided sk_test key; stabilize sandbox dev server; git hygiene
+
+Work Log:
+- Added PAYSTACK_SECRET_KEY (sk_test_...) to .env + protected .env.supabase; key validated directly against api.paystack.co (status:true)
+- Dev server wedging investigation (5 boot cycles): NOT app code. Findings: Turbopack AND webpack dev both intermittently starve request queues after cold compiles on this throttled 4GB sandbox; wedge correlated with compile of large route graphs (auth route, /api). Server memory grows 1.3->1.8GB then hot-loops. Mitigations applied: dev script switched to --webpack (package.json), images.unoptimized=true (next.config.ts, sharp/._next/image hang removed), NODE_OPTIONS heap cap 1400MB in .env.supabase. Boot path (.zscripts/dev.sh) unchanged; foreground boot + tool-timeout-kill is the survival pattern (setsid background boots get reaped by container)
+- Verified Paystack integration end-to-end server-side via scripts/paystack-e2e.ts: 6/6 PASS — mode=LIVE_KEYS; initialize -> REAL authorizationUrl (checkout.paystack.com/...); verify -> PENDING (amount match); webhook HMAC-SHA512 accepts valid, rejects tampered; probe records cleaned up
+- Full-lifecycle attempt: scripts/paystack-start-payment.ts created REAL transaction (SKS-...-GDSEJH, ₦1500) -> hosted page blocked by Cloudflare from headless browser (cannot auto-complete card) -> scripts/paystack-apply-payment.ts confirmed state machine correctness (PENDING -> no apply) + cleanup. Apply-path DB logic was already browser-verified in mock era + covered by 44/44 rule tests
+- scripts/db-ping.ts: Supabase SELECT 1 in 1.7s, 8 users — DB healthy
+- Git: user.email=jgdsnd@gmail.com set; UNTRACKED .env (was tracked despite .gitignore — secrets now stay local); committed next.config/package.json/scripts changes (539c5de). No remote — push needs PAT + repo URL
+- Lint clean; fresh dev server booted and left running (serves /; login SPA splash verified rendering + hydration OK; full interactive E2E unreliable IN-SANDBOX due to dev-queue slowness — production build unaffected)
+
+Stage Summary:
+- Paystack is LIVE in test mode: billing view auto-switches from MOCK banner to real "Open Paystack" hosted checkout + server-side verify poll (existing UI wiring, no code change needed)
+- 3 probe scripts persisted in scripts/ for future re-verification (paystack-e2e | start-payment | apply-payment; run with env sourced)
+- Sandbox dev-server slowness documented; honest boundary: interactive browser E2E of the full card payment not possible from headless sandbox (Cloudflare)
+- Next: user provides GitHub PAT + repo URL to push; Paystack public key (pk_test_...) only needed if switching to inline popup checkout
